@@ -73,3 +73,43 @@ func (s *VideoStore) UpdateLoginAt(userID string) error {
 	_, err := s.db.Exec("UPDATE users SET login_at = CURRENT_TIMESTAMP WHERE id = ?", userID)
 	return err
 }
+
+func (s *VideoStore) ListUsers() ([]*User, error) {
+	rows, err := s.db.Query("SELECT id, username, role, created_at, COALESCE(login_at, '') FROM users ORDER BY created_at")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		u := &User{}
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.LoginAt); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (s *VideoStore) DeleteUser(id string) error {
+	_, err := s.db.Exec("DELETE FROM users WHERE id = ?", id)
+	return err
+}
+
+func (s *VideoStore) UpdateUserRole(id, role string) error {
+	if role != "admin" && role != "member" && role != "guest" {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+	_, err := s.db.Exec("UPDATE users SET role = ? WHERE id = ?", role, id)
+	return err
+}
+
+func (s *VideoStore) UpdateUserPassword(id, password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	_, err = s.db.Exec("UPDATE users SET password_hash = ? WHERE id = ?", string(hash), id)
+	return err
+}

@@ -27,8 +27,8 @@ func TestHlsOutputPath(t *testing.T) {
 func TestBuildFFmpegArgs(t *testing.T) {
 	args := buildFFmpegArgs("/input/video.mp4", "/output/index.m3u8")
 
-	if len(args) != 13 {
-		t.Fatalf("len(args) = %d, want 13", len(args))
+	if len(args) != 15 {
+		t.Fatalf("len(args) = %d, want 15", len(args))
 	}
 	if args[0] != "-i" || args[1] != "/input/video.mp4" {
 		t.Errorf("input args: %v %v", args[0], args[1])

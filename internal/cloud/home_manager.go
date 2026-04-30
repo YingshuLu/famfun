@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/quic-go/quic-go"
@@ -26,8 +27,11 @@ type HomeRegistry interface {
 	UnregisterHome(homeID string)
 	GetHome(homeID string) (HomeConnection, bool)
 	ListAllVideos() []*model.Video
+	ListVideosPage(offset, limit int, filter func(*model.Video) bool) (page []*model.Video, total int)
 	QueryVideo(homeID, videoID string) (*model.Video, bool)
 	UpdateVideos(homeID string, videos []*model.Video)
+	HomeVideoIDs(homeID string) map[string]struct{}
+	SyncHomeVideos(homeID string, toAdd []*model.Video, toRemove []string)
 	UpdateVideoInfo(homeID, videoID, title, description, visibility string) bool
 	FindVideoByID(videoID string) (*model.Video, bool)
 	ListHomes() []HomeInfo
@@ -38,13 +42,14 @@ type HomeRegistry interface {
 type HomeManager struct {
 	mu     sync.RWMutex
 	homes  map[string]HomeConnection
-	videos map[string][]*model.Video
+	videos map[string]map[string]*model.Video
+	sorted []*model.Video
 }
 
 func NewHomeManager() *HomeManager {
 	return &HomeManager{
 		homes:  make(map[string]HomeConnection),
-		videos: make(map[string][]*model.Video),
+		videos: make(map[string]map[string]*model.Video),
 	}
 }
 
@@ -65,6 +70,7 @@ func (m *HomeManager) UnregisterHome(homeID string) {
 
 	delete(m.homes, homeID)
 	delete(m.videos, homeID)
+	m.rebuildSorted()
 }
 
 func (m *HomeManager) GetHome(homeID string) (HomeConnection, bool) {
@@ -75,15 +81,46 @@ func (m *HomeManager) GetHome(homeID string) (HomeConnection, bool) {
 	return conn, ok
 }
 
+func (m *HomeManager) rebuildSorted() {
+	var all []*model.Video
+	for _, vids := range m.videos {
+		for _, v := range vids {
+			all = append(all, v)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].CreatedAt != all[j].CreatedAt {
+			return all[i].CreatedAt > all[j].CreatedAt
+		}
+		return all[i].ID < all[j].ID
+	})
+	m.sorted = all
+}
+
 func (m *HomeManager) ListAllVideos() []*model.Video {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var all []*model.Video
-	for _, vids := range m.videos {
-		all = append(all, vids...)
+	result := make([]*model.Video, len(m.sorted))
+	copy(result, m.sorted)
+	return result
+}
+
+func (m *HomeManager) ListVideosPage(offset, limit int, filter func(*model.Video) bool) (page []*model.Video, total int) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	matched := 0
+	for _, v := range m.sorted {
+		if filter != nil && !filter(v) {
+			continue
+		}
+		if matched >= offset && len(page) < limit {
+			page = append(page, v)
+		}
+		matched++
 	}
-	return all
+	return page, matched
 }
 
 func (m *HomeManager) QueryVideo(homeID, videoID string) (*model.Video, bool) {
@@ -94,19 +131,52 @@ func (m *HomeManager) QueryVideo(homeID, videoID string) (*model.Video, bool) {
 	if !ok {
 		return nil, false
 	}
-	for _, v := range vids {
-		if v.ID == videoID {
-			return v, true
-		}
-	}
-	return nil, false
+	v, ok := vids[videoID]
+	return v, ok
 }
 
 func (m *HomeManager) UpdateVideos(homeID string, videos []*model.Video) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.videos[homeID] = videos
+	vm := make(map[string]*model.Video, len(videos))
+	for _, v := range videos {
+		vm[v.ID] = v
+	}
+	m.videos[homeID] = vm
+	m.rebuildSorted()
+}
+
+func (m *HomeManager) HomeVideoIDs(homeID string) map[string]struct{} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	vids := m.videos[homeID]
+	result := make(map[string]struct{}, len(vids))
+	for id := range vids {
+		result[id] = struct{}{}
+	}
+	return result
+}
+
+func (m *HomeManager) SyncHomeVideos(homeID string, toAdd []*model.Video, toRemove []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	vids := m.videos[homeID]
+	if vids == nil {
+		vids = make(map[string]*model.Video)
+		m.videos[homeID] = vids
+	}
+	for _, id := range toRemove {
+		delete(vids, id)
+	}
+	for _, v := range toAdd {
+		vids[v.ID] = v
+	}
+	if len(toAdd) > 0 || len(toRemove) > 0 {
+		m.rebuildSorted()
+	}
 }
 
 func (m *HomeManager) FindVideoByID(videoID string) (*model.Video, bool) {
@@ -114,10 +184,8 @@ func (m *HomeManager) FindVideoByID(videoID string) (*model.Video, bool) {
 	defer m.mu.RUnlock()
 
 	for _, vids := range m.videos {
-		for _, v := range vids {
-			if v.ID == videoID {
-				return v, true
-			}
+		if v, ok := vids[videoID]; ok {
+			return v, true
 		}
 	}
 	return nil, false
@@ -131,15 +199,15 @@ func (m *HomeManager) UpdateVideoInfo(homeID, videoID, title, description, visib
 	if !ok {
 		return false
 	}
-	for _, v := range vids {
-		if v.ID == videoID {
-			v.Title = title
-			v.Description = description
-			v.Visibility = visibility
-			return true
-		}
+	v, ok := vids[videoID]
+	if !ok {
+		return false
 	}
-	return false
+	v.Title = title
+	v.Description = description
+	v.Visibility = visibility
+	m.rebuildSorted()
+	return true
 }
 
 func (m *HomeManager) ListHomes() []HomeInfo {
@@ -167,9 +235,5 @@ func (m *HomeManager) VideoCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	count := 0
-	for _, vids := range m.videos {
-		count += len(vids)
-	}
-	return count
+	return len(m.sorted)
 }

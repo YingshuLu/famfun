@@ -131,3 +131,82 @@ func TestGetUserByUsernameIncludesRole(t *testing.T) {
 		t.Errorf("got role %q, want %q", found.Role, "admin")
 	}
 }
+
+func TestListUsers(t *testing.T) {
+	store := newTestStore(t)
+
+	store.CreateUser("alice", "pass", "admin")
+	store.CreateUser("bob", "pass", "member")
+	store.CreateUser("charlie", "pass", "guest")
+
+	users, err := store.ListUsers()
+	if err != nil {
+		t.Fatalf("ListUsers: %v", err)
+	}
+	// +1 for seeded demo user
+	if len(users) != 4 {
+		t.Fatalf("got %d users, want 4", len(users))
+	}
+}
+
+func TestDeleteUser(t *testing.T) {
+	store := newTestStore(t)
+
+	user, _ := store.CreateUser("alice", "pass", "guest")
+	if err := store.DeleteUser(user.ID); err != nil {
+		t.Fatalf("DeleteUser: %v", err)
+	}
+
+	_, err := store.GetUserByID(user.ID)
+	if err == nil {
+		t.Fatal("expected error after deletion")
+	}
+}
+
+func TestDeleteUserNotFound(t *testing.T) {
+	store := newTestStore(t)
+
+	if err := store.DeleteUser("nonexistent-id"); err != nil {
+		t.Fatalf("DeleteUser nonexistent should not error: %v", err)
+	}
+}
+
+func TestUpdateUserRole(t *testing.T) {
+	store := newTestStore(t)
+
+	user, _ := store.CreateUser("alice", "pass", "guest")
+	if err := store.UpdateUserRole(user.ID, "admin"); err != nil {
+		t.Fatalf("UpdateUserRole: %v", err)
+	}
+
+	updated, _ := store.GetUserByID(user.ID)
+	if updated.Role != "admin" {
+		t.Errorf("got role %q, want %q", updated.Role, "admin")
+	}
+}
+
+func TestUpdateUserRoleInvalid(t *testing.T) {
+	store := newTestStore(t)
+
+	user, _ := store.CreateUser("alice", "pass", "guest")
+	if err := store.UpdateUserRole(user.ID, "superuser"); err == nil {
+		t.Fatal("expected error for invalid role")
+	}
+}
+
+func TestUpdateUserPassword(t *testing.T) {
+	store := newTestStore(t)
+
+	user, _ := store.CreateUser("alice", "oldpass", "guest")
+	if err := store.UpdateUserPassword(user.ID, "newpass"); err != nil {
+		t.Fatalf("UpdateUserPassword: %v", err)
+	}
+
+	updated, _ := store.GetUserByUsername("alice")
+	if err := bcrypt.CompareHashAndPassword([]byte(updated.PasswordHash), []byte("newpass")); err != nil {
+		t.Errorf("new password verify failed: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(updated.PasswordHash), []byte("oldpass")); err == nil {
+		t.Error("old password should no longer work")
+	}
+}

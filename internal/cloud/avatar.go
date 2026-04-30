@@ -36,6 +36,6 @@ func firstChar(s string) string {
 
 func usernameColor(username string) string {
 	hash := md5.Sum([]byte(username))
-	h := int(hash[0])%360
+	h := int(hash[0]) % 360
 	return fmt.Sprintf("hsl(%d, 60%%, 45%%)", h)
 }

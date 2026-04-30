@@ -2,11 +2,11 @@ package home
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"log"
 
 	"github.com/yingshulu/famfun/internal/model"
 )

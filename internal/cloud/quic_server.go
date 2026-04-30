@@ -157,20 +157,33 @@ func (s *QUICServer) handleVideoListUpdate(hc *quicHomeConn, update *pb.VideoLis
 }
 
 func (s *QUICServer) syncVideos(hc *quicHomeConn, videoIDs []string) {
-	var videos []*model.Video
+	var toAdd = make(map[string]struct{})
+	var addedVideos []*model.Video
 	for _, id := range videoIDs {
-		if v, ok := s.homeRegistry.QueryVideo(hc.homeID, id); ok {
-			videos = append(videos, v)
+		if _, ok := s.homeRegistry.QueryVideo(hc.homeID, id); ok {
 			continue
 		}
+		if _, exists := toAdd[id]; exists {
+			continue
+		}
+
 		v, err := s.fetchVideoInfo(hc, id)
 		if err != nil {
 			log.Printf("fetch video info %s from %s: %v", id, hc.homeID, err)
 			continue
 		}
-		videos = append(videos, v)
+		addedVideos = append(addedVideos, v)
+		toAdd[id] = struct{}{}
 	}
-	s.homeRegistry.UpdateVideos(hc.homeID, videos)
+
+	if len(toAdd) == 0 {
+		return
+	}
+
+	s.homeRegistry.SyncHomeVideos(hc.homeID, addedVideos, nil)
+	if len(toAdd) > 0 {
+		log.Printf("added %d new videos from %s", len(toAdd), hc.homeID)
+	}
 }
 
 func (s *QUICServer) fetchVideoInfo(hc *quicHomeConn, videoID string) (*model.Video, error) {

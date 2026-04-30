@@ -170,13 +170,13 @@ func TestProcessAndPublishIncremental(t *testing.T) {
 	}
 
 	first := envs[0].GetVideoListUpdate()
-	if len(first.VideoIds) != 1 {
-		t.Errorf("first update: video_ids = %d, want 1", len(first.VideoIds))
+	if len(first.VideoIds) != 1 || first.VideoIds[0] != "v1" {
+		t.Errorf("first update: video_ids = %v, want [v1]", first.VideoIds)
 	}
 
 	second := envs[1].GetVideoListUpdate()
-	if len(second.VideoIds) != 2 {
-		t.Errorf("second update: video_ids = %d, want 2", len(second.VideoIds))
+	if len(second.VideoIds) != 1 || second.VideoIds[0] != "v2" {
+		t.Errorf("second update: video_ids = %v, want [v2]", second.VideoIds)
 	}
 }
 

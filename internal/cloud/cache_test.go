@@ -57,8 +57,8 @@ func TestPutUpdateExisting(t *testing.T) {
 
 func TestEviction(t *testing.T) {
 	cache := NewLRUCache(10)
-	cache.Put("a", []byte("12345"))  // 5 bytes
-	cache.Put("b", []byte("67890"))  // 5 bytes, total 10
+	cache.Put("a", []byte("12345")) // 5 bytes
+	cache.Put("b", []byte("67890")) // 5 bytes, total 10
 	cache.Put("c", []byte("abcde")) // 5 bytes, evicts "a"
 
 	_, ok := cache.Get("a")
@@ -102,9 +102,9 @@ func TestStats(t *testing.T) {
 	cache.Put("k1", []byte("data1"))
 	cache.Put("k2", []byte("data2"))
 
-	cache.Get("k1")       // hit
-	cache.Get("k1")       // hit
-	cache.Get("missing")  // miss
+	cache.Get("k1")      // hit
+	cache.Get("k1")      // hit
+	cache.Get("missing") // miss
 
 	stats := cache.Stats()
 	if stats.Hits != 2 {
@@ -135,8 +135,8 @@ func TestStatsZeroDivision(t *testing.T) {
 
 func TestCurrentBytesTracking(t *testing.T) {
 	cache := NewLRUCache(1024)
-	cache.Put("a", []byte("hello"))     // 5 bytes
-	cache.Put("b", []byte("world!!"))   // 7 bytes
+	cache.Put("a", []byte("hello"))   // 5 bytes
+	cache.Put("b", []byte("world!!")) // 7 bytes
 
 	stats := cache.Stats()
 	if stats.SizeBytes != 12 {

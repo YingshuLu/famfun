@@ -66,6 +66,41 @@ func TestGetAllVideoStatsEmpty(t *testing.T) {
 	}
 }
 
+func TestGetVideoStats(t *testing.T) {
+	store := newTestStore(t)
+
+	store.IncrementPlayCount("v1")
+	store.IncrementPlayCount("v1")
+	store.IncrementPlayCount("v2")
+	store.IncrementCommentCount("v3")
+
+	stats, err := store.GetVideoStats([]string{"v1", "v3"})
+	if err != nil {
+		t.Fatalf("GetVideoStats: %v", err)
+	}
+	if stats["v1"].PlayCount != 2 {
+		t.Errorf("v1 play: got %d, want 2", stats["v1"].PlayCount)
+	}
+	if _, ok := stats["v2"]; ok {
+		t.Error("v2 should not be in results")
+	}
+	if stats["v3"].CommentCount != 1 {
+		t.Errorf("v3 comment: got %d, want 1", stats["v3"].CommentCount)
+	}
+}
+
+func TestGetVideoStatsEmpty(t *testing.T) {
+	store := newTestStore(t)
+
+	stats, err := store.GetVideoStats([]string{})
+	if err != nil {
+		t.Fatalf("GetVideoStats: %v", err)
+	}
+	if len(stats) != 0 {
+		t.Errorf("expected empty, got %v", stats)
+	}
+}
+
 func TestGetAllVideoStatsMultipleVideos(t *testing.T) {
 	store := newTestStore(t)
 

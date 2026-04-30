@@ -2,19 +2,20 @@ package cloud
 
 import (
 	"database/sql"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
 
 type Comment struct {
-	ID        int            `json:"id"`
-	VideoID   string         `json:"video_id"`
-	UserID    string         `json:"user_id"`
-	Username  string         `json:"username"`
-	ParentID  *int           `json:"parent_id,omitempty"`
-	Content   string         `json:"content"`
-	CreatedAt string         `json:"created_at"`
-	Replies   []*Comment     `json:"replies"`
+	ID        int        `json:"id"`
+	VideoID   string     `json:"video_id"`
+	UserID    string     `json:"user_id"`
+	Username  string     `json:"username"`
+	ParentID  *int       `json:"parent_id,omitempty"`
+	Content   string     `json:"content"`
+	CreatedAt string     `json:"created_at"`
+	Replies   []*Comment `json:"replies"`
 }
 
 type VideoStore struct {
@@ -96,6 +97,35 @@ func (s *VideoStore) GetAllVideoStats() (map[string]VideoStats, error) {
 	defer rows.Close()
 
 	stats := make(map[string]VideoStats)
+	for rows.Next() {
+		var id string
+		var vs VideoStats
+		if err := rows.Scan(&id, &vs.PlayCount, &vs.CommentCount); err != nil {
+			return nil, err
+		}
+		stats[id] = vs
+	}
+	return stats, rows.Err()
+}
+
+func (s *VideoStore) GetVideoStats(videoIDs []string) (map[string]VideoStats, error) {
+	if len(videoIDs) == 0 {
+		return map[string]VideoStats{}, nil
+	}
+
+	query := "SELECT video_id, play_count, comment_count FROM video_stats WHERE video_id IN (?" + strings.Repeat(",?", len(videoIDs)-1) + ")"
+	args := make([]any, len(videoIDs))
+	for i, id := range videoIDs {
+		args[i] = id
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make(map[string]VideoStats, len(videoIDs))
 	for rows.Next() {
 		var id string
 		var vs VideoStats

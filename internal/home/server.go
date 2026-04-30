@@ -79,19 +79,19 @@ func (s *HomeServer) Run(ctx context.Context, cloudAddr string) error {
 		} else {
 			go s.scanAndConvertBackground(ctx)
 		}
-		
+
 		s.startHeartbeat(ctx)
-		
+
 		select {
-			case <-ctx.Done():
-				return s.connector.Close()
-			case <-s.connector.Disconnected():
-				log.Printf("disconnected from cloud, reconnecting...")
-				s.connector.Close()
-				log.Printf("reconnected to cloud")
-				reconnect = true
+		case <-ctx.Done():
+			return s.connector.Close()
+		case <-s.connector.Disconnected():
+			log.Printf("disconnected from cloud, reconnecting...")
+			s.connector.Close()
+			log.Printf("reconnected to cloud")
+			reconnect = true
 		}
-	
+
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,6 +78,10 @@ func (s *CloudServer) setupRoutes() {
 	admin := api.Group("/admin")
 	admin.Use(s.adminOnly())
 	admin.POST("/users", s.handleCreateUser)
+	admin.GET("/users", s.handleListUsers)
+	admin.DELETE("/users/:userID", s.handleDeleteUser)
+	admin.PUT("/users/:userID/role", s.handleUpdateUserRole)
+	admin.PUT("/users/:userID/password", s.handleUpdateUserPassword)
 
 	s.router.NoRoute(s.handleStaticFiles)
 }
@@ -97,31 +102,48 @@ func canAccess(role, visibility string) bool {
 }
 
 func (s *CloudServer) handleListVideos(c *gin.Context) {
-	videos := s.homeRegistry.ListAllVideos()
 	role := c.GetString("role")
 
-	allStats, err := s.videoStore.GetAllVideoStats()
-	if err != nil {
-		allStats = map[string]VideoStats{}
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "30"))
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
 	}
 
-	var result []videoJSON
-	for _, v := range videos {
-		if !canAccess(role, v.Visibility) {
-			continue
-		}
-		vj := videoToJSON(v)
-		vs, ok := allStats[v.ID]
-		if ok {
-			vj.PlayCount = vs.PlayCount
-			vj.CommentCount = vs.CommentCount
-		}
-		result = append(result, vj)
+	page, total := s.homeRegistry.ListVideosPage(offset, limit, func(v *model.Video) bool {
+		return canAccess(role, v.Visibility)
+	})
+
+	videoIDs := make([]string, len(page))
+	for i, v := range page {
+		videoIDs[i] = v.ID
 	}
-	if result == nil {
-		result = []videoJSON{}
+
+	pageStats, err := s.videoStore.GetVideoStats(videoIDs)
+	if err != nil {
+		pageStats = map[string]VideoStats{}
 	}
-	c.JSON(http.StatusOK, result)
+
+	result := make([]videoJSON, len(page))
+	for i, v := range page {
+		result[i] = videoToJSON(v)
+		if vs, ok := pageStats[v.ID]; ok {
+			result[i].PlayCount = vs.PlayCount
+			result[i].CommentCount = vs.CommentCount
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"videos":   result,
+		"total":    total,
+		"has_more": offset+limit < total,
+	})
 }
 
 func (s *CloudServer) checkVideoAccess(c *gin.Context, videoID string) bool {
@@ -388,6 +410,60 @@ func (s *CloudServer) handleScanHome(c *gin.Context) {
 	homeID := c.Param("homeID")
 	if err := s.streamProxy.ScanAndConvert(homeID); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (s *CloudServer) handleListUsers(c *gin.Context) {
+	users, err := s.videoStore.ListUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, users)
+}
+
+func (s *CloudServer) handleDeleteUser(c *gin.Context) {
+	userID := c.Param("userID")
+	if userID == c.GetString("user_id") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot delete yourself"})
+		return
+	}
+	if err := s.videoStore.DeleteUser(userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (s *CloudServer) handleUpdateUserRole(c *gin.Context) {
+	userID := c.Param("userID")
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Role == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "role is required"})
+		return
+	}
+	if err := s.videoStore.UpdateUserRole(userID, req.Role); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (s *CloudServer) handleUpdateUserPassword(c *gin.Context) {
+	userID := c.Param("userID")
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password is required"})
+		return
+	}
+	if err := s.videoStore.UpdateUserPassword(userID, req.Password); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})

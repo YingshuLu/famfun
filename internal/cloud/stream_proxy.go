@@ -319,4 +319,3 @@ func extractSegmentContent(resp *pb.Envelope) ([]byte, error) {
 func buildCacheKey(homeID, videoID, segmentName string) string {
 	return homeID + "/" + videoID + "/" + segmentName
 }
-

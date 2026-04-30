@@ -97,7 +97,7 @@
       <img class="user-avatar" id="user-avatar" onclick="toggleUserMenu()">
     </div>
     <div id="user-menu">
-      <a href="#" id="add-user-link" style="display:none" onclick="showAddUserModal()">Add User</a>
+      <a href="/manage.html" id="manage-link" style="display:none">Manage</a>
       <a href="#" onclick="logout()">Logout</a>
     </div>
   </header>
@@ -106,6 +106,7 @@
   <div id="loading">Loading videos...</div>
   <div id="empty">No videos available</div>
   <div id="grid"></div>
+  <div id="load-more" style="text-align:center;color:#888;padding:20px;display:none;">Loading more...</div>
   <div id="player-view">
     <div id="player-header">
       <h2 id="player-title"></h2>
@@ -140,19 +141,6 @@
     <div id="home-list"></div>
   </div>
   </div>
-  <div class="modal-overlay" id="add-user-modal">
-    <div class="modal">
-      <h3>Add User</h3>
-      <div class="modal-msg" id="add-user-msg"></div>
-      <input id="new-username" type="text" placeholder="Username">
-      <input id="new-password" type="password" placeholder="Password">
-      <select id="new-role"><option value="guest">Guest</option><option value="member">Member</option><option value="admin">Admin</option></select>
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="hideAddUserModal()">Cancel</button>
-        <button class="btn-primary" onclick="createUser()">Create</button>
-      </div>
-    </div>
-  </div>
   <div class="modal-overlay" id="upload-modal">
     <div class="modal" style="width:400px">
       <h3>Upload Video</h3>
@@ -186,7 +174,13 @@
     let currentVideoID = null;
     let currentVideo = null;
     let currentUser = null;
-    let cachedVideos = null;
+    let loadedVideos = [];
+    let loadedIDs = new Set();
+    let totalVideos = 0;
+    let currentOffset = 0;
+    let pageSize = 30;
+    let isLoading = false;
+    let hasMore = true;
 
     async function loadCurrentUser() {
       try {
@@ -196,7 +190,7 @@
           document.getElementById('user-name').textContent = currentUser.username;
           document.getElementById('user-avatar').src = `/api/avatar/${encodeURIComponent(currentUser.username)}`;
           if (currentUser.role === 'admin') {
-            document.getElementById('add-user-link').style.display = 'block';
+            document.getElementById('manage-link').style.display = 'block';
             document.getElementById('home-panel').style.display = 'block';
           }
           if (currentUser.role !== 'guest') {
@@ -236,43 +230,91 @@
       return (bytes / 1e3).toFixed(1) + ' KB';
     }
 
+    function computePageSize() {
+      const colWidth = 300;
+      const rowHeight = 260;
+      const cols = Math.max(1, Math.floor(window.innerWidth / colWidth));
+      const rows = Math.max(1, Math.ceil(window.innerHeight / rowHeight));
+      return Math.max(6, Math.min(cols * rows, 100));
+    }
+
+    function resetVideoState() {
+      loadedVideos = [];
+      loadedIDs = new Set();
+      totalVideos = 0;
+      currentOffset = 0;
+      hasMore = true;
+      pageSize = computePageSize();
+    }
+
     async function loadVideos() {
+      if (isLoading || !hasMore) return;
+      isLoading = true;
+      document.getElementById('load-more').style.display = hasMore ? 'block' : 'none';
       try {
-        const resp = await fetch('/api/videos');
-        cachedVideos = await resp.json();
+        const resp = await fetch(`/api/videos?offset=${currentOffset}&limit=${pageSize}`);
+        const data = await resp.json();
         document.getElementById('loading').style.display = 'none';
-        renderGrid();
+        totalVideos = data.total;
+        hasMore = data.has_more;
+
+        const newVideos = [];
+        for (const v of data.videos) {
+          if (!loadedIDs.has(v.id)) {
+            loadedIDs.add(v.id);
+            loadedVideos.push(v);
+            newVideos.push(v);
+          }
+        }
+        currentOffset += data.videos.length;
+
+        if (loadedVideos.length === 0) {
+          document.getElementById('empty').style.display = 'block';
+        } else {
+          document.getElementById('empty').style.display = 'none';
+          appendCards(newVideos);
+        }
       } catch (e) {
         document.getElementById('loading').textContent = 'Failed to load videos';
+      } finally {
+        isLoading = false;
+        document.getElementById('load-more').style.display = 'none';
       }
     }
 
+    function createCard(v) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.onclick = () => playVideo(v);
+      card.innerHTML = `
+        <img src="${v.thumbnail_url}" alt="${v.title}">
+        <div class="info">
+          <h3>${v.title}</h3>
+          <div class="meta">
+            <span>${formatDuration(v.duration)}</span>
+            <span>${formatSize(v.filesize)}</span>
+            ${v.resolution ? `<span>${v.resolution}</span>` : ''}
+            <span class="play-count">&#128065; ${v.play_count || 0}</span>
+            <span class="play-count">&#128172; ${v.comment_count || 0}</span>
+          </div>
+        </div>`;
+      return card;
+    }
+
+    function appendCards(videos) {
+      const grid = document.getElementById('grid');
+      videos.forEach(v => grid.appendChild(createCard(v)));
+    }
+
     function renderGrid() {
-      if (!cachedVideos || cachedVideos.length === 0) {
+      if (loadedVideos.length === 0) {
         document.getElementById('empty').style.display = 'block';
         return;
       }
       document.getElementById('empty').style.display = 'none';
       const grid = document.getElementById('grid');
       grid.innerHTML = '';
-      cachedVideos.forEach(v => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.onclick = () => playVideo(v);
-        card.innerHTML = `
-          <img src="${v.thumbnail_url}" alt="${v.title}">
-          <div class="info">
-            <h3>${v.title}</h3>
-            <div class="meta">
-              <span>${formatDuration(v.duration)}</span>
-              <span>${formatSize(v.filesize)}</span>
-              ${v.resolution ? `<span>${v.resolution}</span>` : ''}
-              <span class="play-count">&#128065; ${v.play_count || 0}</span>
-              <span class="play-count">&#128172; ${v.comment_count || 0}</span>
-            </div>
-          </div>`;
-        grid.appendChild(card);
-      });
+      loadedVideos.forEach(v => grid.appendChild(createCard(v)));
     }
 
     function playVideo(v) {
@@ -398,7 +440,6 @@
       currentVideo = null;
       document.getElementById('player-view').style.display = 'none';
       document.getElementById('grid').style.display = 'grid';
-      renderGrid();
     }
 
     function showDescription(desc) {
@@ -466,44 +507,6 @@
         document.getElementById('info-display').style.display = '';
         btn.textContent = 'Edit';
       }
-    }
-
-    function showAddUserModal() {
-      document.getElementById('user-menu').style.display = 'none';
-      document.getElementById('add-user-msg').textContent = '';
-      document.getElementById('new-username').value = '';
-      document.getElementById('new-password').value = '';
-      document.getElementById('new-role').value = 'guest';
-      document.getElementById('add-user-modal').classList.add('active');
-    }
-
-    function hideAddUserModal() {
-      document.getElementById('add-user-modal').classList.remove('active');
-    }
-
-    async function createUser() {
-      const username = document.getElementById('new-username').value.trim();
-      const password = document.getElementById('new-password').value;
-      const role = document.getElementById('new-role').value;
-      const msg = document.getElementById('add-user-msg');
-      if (!username || !password) { msg.textContent = 'Username and password are required'; msg.style.color = '#ff4444'; return; }
-      try {
-        const resp = await fetch('/api/admin/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password, role })
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-          msg.textContent = `User "${data.username}" created (${data.role})`;
-          msg.style.color = '#44ff44';
-          document.getElementById('new-username').value = '';
-          document.getElementById('new-password').value = '';
-        } else {
-          msg.textContent = data.error || 'Failed to create user';
-          msg.style.color = '#ff4444';
-        }
-      } catch (e) { msg.textContent = 'Network error'; msg.style.color = '#ff4444'; }
     }
 
     async function showUploadModal() {
@@ -648,7 +651,7 @@
           document.getElementById('upload-start-btn').textContent = 'Done';
           document.getElementById('upload-cancel-btn').disabled = false;
           document.getElementById('upload-cancel-btn').textContent = 'Close';
-          setTimeout(() => { cachedVideos = null; loadVideos(); }, 3000);
+          setTimeout(() => { resetVideoState(); document.getElementById('grid').innerHTML = ''; loadVideos(); }, 3000);
         } else {
           let msg = 'Upload failed';
           try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
@@ -740,8 +743,23 @@
       homeStatusTimer = setInterval(fetchHomeStatus, 30000);
     }
 
+    window.addEventListener('scroll', () => {
+      if (document.getElementById('player-view').style.display === 'block') return;
+      if (window.scrollY + window.innerHeight >= document.body.scrollHeight - 200) {
+        loadVideos();
+      }
+    });
+
+    async function initialLoad() {
+      resetVideoState();
+      const pagesOnStart = 3;
+      for (let i = 0; i < pagesOnStart && hasMore; i++) {
+        await loadVideos();
+      }
+    }
+
     loadCurrentUser().then(startHomeStatusPolling);
-    loadVideos();
+    initialLoad();
   </script>
 </body>
 </html>

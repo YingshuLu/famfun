@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FamFun - User Management</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0f0f23; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; }
+    header { padding: 16px 20px; border-bottom: 1px solid #222; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 24px; font-weight: 700; }
+    #user-info { display: flex; align-items: center; gap: 8px; }
+    #user-info .user-avatar { width: 32px; height: 32px; border-radius: 6px; cursor: pointer; }
+    #user-info .user-name { font-size: 14px; color: #aaa; }
+    #user-menu { display: none; position: absolute; right: 20px; top: 56px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px; padding: 8px 0; z-index: 10; }
+    #user-menu a { display: block; padding: 8px 20px; color: #fff; text-decoration: none; font-size: 14px; }
+    #user-menu a:hover { background: #333; }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 24px; width: 320px; }
+    .modal h3 { margin-bottom: 16px; }
+    .modal input, .modal select { width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid #555; background: #0f0f23; color: #fff; font-size: 14px; margin-bottom: 12px; }
+    .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal button { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-size: 14px; }
+    .modal .btn-primary { background: #4a4aff; color: #fff; }
+    .modal .btn-cancel { background: #333; color: #fff; }
+    .modal .modal-msg { font-size: 13px; margin-bottom: 8px; }
+    #home-status { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-left: 10px; background: #555; cursor: default; }
+    #home-status.online { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+    #home-status.offline { background: #f44336; }
+    #content-wrapper { display: flex; }
+    #main-content { flex: 1; min-width: 0; padding: 20px; }
+    #home-panel { width: 220px; border-left: 1px solid #222; padding: 16px; display: none; flex-shrink: 0; }
+    #home-panel h3 { font-size: 14px; color: #aaa; margin-bottom: 12px; }
+    .home-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #222; }
+    .home-item:last-child { border-bottom: none; }
+    .home-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .home-dot.online { background: #4caf50; box-shadow: 0 0 4px #4caf50; }
+    .home-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scan-btn { background: none; border: 1px solid #555; color: #aaa; font-size: 12px; padding: 3px 10px; border-radius: 4px; cursor: pointer; min-width: 52px; display: flex; align-items: center; justify-content: center; gap: 4px; }
+    .scan-btn:hover { color: #4a4aff; border-color: #4a4aff; }
+    .scan-btn .spinner { width: 14px; height: 14px; border: 2px solid #555; border-top-color: #4a4aff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .section-header h2 { font-size: 20px; }
+    .btn-add { background: #4a4aff; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .btn-add:hover { background: #5c5cff; }
+
+    .user-table { width: 100%; border-collapse: collapse; }
+    .user-table th { text-align: left; padding: 10px 12px; font-size: 13px; color: #aaa; border-bottom: 1px solid #333; font-weight: 600; }
+    .user-table td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #222; vertical-align: middle; }
+    .user-table tr:hover { background: #1a1a2e; }
+    .role-badge { padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+    .role-badge.admin { background: #4a4aff33; color: #7b7bff; }
+    .role-badge.member { background: #4caf5033; color: #6fcf77; }
+    .role-badge.guest { background: #ff990033; color: #ffb84d; }
+    .action-btn { background: none; border: 1px solid #555; color: #aaa; font-size: 12px; padding: 4px 10px; border-radius: 4px; cursor: pointer; margin-right: 4px; }
+    .action-btn:hover { color: #4a4aff; border-color: #4a4aff; }
+    .action-btn.danger:hover { color: #f44336; border-color: #f44336; }
+    .inline-form { display: inline-flex; align-items: center; gap: 6px; }
+    .inline-form input, .inline-form select { padding: 4px 8px; border-radius: 4px; border: 1px solid #555; background: #0f0f23; color: #fff; font-size: 13px; }
+    .inline-form button { padding: 4px 10px; border-radius: 4px; border: none; background: #4a4aff; color: #fff; cursor: pointer; font-size: 12px; }
+    .inline-form .cancel-btn { background: #333; }
+    .status-msg { font-size: 13px; padding: 8px 12px; border-radius: 4px; margin-bottom: 16px; display: none; }
+    .status-msg.success { display: block; background: #4caf5022; color: #6fcf77; }
+    .status-msg.error { display: block; background: #f4433622; color: #f44336; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><a href="/" style="color:#fff;text-decoration:none;">FamFun</a><span id="home-status" title="Checking..."></span></h1>
+    <div id="user-info">
+      <span class="user-name" id="user-name"></span>
+      <img class="user-avatar" id="user-avatar" onclick="toggleUserMenu()">
+    </div>
+    <div id="user-menu">
+      <a href="/manage.html">Manage</a>
+      <a href="#" onclick="showAddUserModal()">Add User</a>
+      <a href="#" onclick="logout()">Logout</a>
+    </div>
+  </header>
+  <div id="content-wrapper">
+    <div id="main-content">
+      <div class="section-header">
+        <h2>User Management</h2>
+        <button class="btn-add" onclick="showAddUserModal()">Add User</button>
+      </div>
+      <div id="status-msg" class="status-msg"></div>
+      <table class="user-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Created</th>
+            <th>Last Login</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="user-tbody"></tbody>
+      </table>
+    </div>
+    <div id="home-panel">
+      <h3>Home Servers</h3>
+      <div id="home-list"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="add-user-modal">
+    <div class="modal">
+      <h3>Add User</h3>
+      <div class="modal-msg" id="add-user-msg"></div>
+      <input id="new-username" type="text" placeholder="Username">
+      <input id="new-password" type="password" placeholder="Password">
+      <select id="new-role"><option value="guest">Guest</option><option value="member">Member</option><option value="admin">Admin</option></select>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="hideAddUserModal()">Cancel</button>
+        <button class="btn-primary" onclick="createUser()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const response = await originalFetch.apply(this, args);
+      if (response.status === 401) {
+        window.location.href = '/login.html';
+        return response;
+      }
+      return response;
+    };
+
+    let currentUser = null;
+
+    async function loadCurrentUser() {
+      try {
+        const resp = await fetch('/api/me');
+        if (resp.ok) {
+          currentUser = await resp.json();
+          document.getElementById('user-name').textContent = currentUser.username;
+          document.getElementById('user-avatar').src = `/api/avatar/${encodeURIComponent(currentUser.username)}`;
+          if (currentUser.role === 'admin') {
+            document.getElementById('home-panel').style.display = 'block';
+          } else {
+            window.location.href = '/';
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+
+    function toggleUserMenu() {
+      const menu = document.getElementById('user-menu');
+      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#user-info') && !e.target.closest('#user-menu')) {
+        document.getElementById('user-menu').style.display = 'none';
+      }
+    });
+
+    async function logout() {
+      await fetch('/auth/logout', { method: 'POST' });
+      window.location.href = '/login.html';
+    }
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('status-msg');
+      el.textContent = msg;
+      el.className = 'status-msg ' + type;
+      setTimeout(() => { el.className = 'status-msg'; }, 4000);
+    }
+
+    async function loadUsers() {
+      try {
+        const resp = await fetch('/api/admin/users');
+        if (!resp.ok) return;
+        const users = await resp.json();
+        renderUsers(users);
+      } catch (e) {}
+    }
+
+    function renderUsers(users) {
+      const tbody = document.getElementById('user-tbody');
+      tbody.innerHTML = '';
+      if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#555;padding:40px;">No users found</td></tr>';
+        return;
+      }
+      users.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.dataset.id = u.id;
+        const isSelf = currentUser && u.id === currentUser.user_id;
+        tr.innerHTML = `
+          <td>${escapeHtml(u.username)}</td>
+          <td><span class="role-badge ${u.role}">${u.role}</span></td>
+          <td>${u.created_at || '-'}</td>
+          <td>${u.login_at || '-'}</td>
+          <td id="actions-${u.id}">
+            <button class="action-btn" onclick="showRoleForm('${u.id}','${u.role}')">Role</button>
+            <button class="action-btn" onclick="showPasswordForm('${u.id}')">Password</button>
+            ${isSelf ? '' : `<button class="action-btn danger" onclick="confirmDelete('${u.id}','${escapeHtml(u.username)}')">Delete</button>`}
+          </td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function showRoleForm(userID, currentRole) {
+      const td = document.getElementById('actions-' + userID);
+      td.innerHTML = `
+        <div class="inline-form">
+          <select id="role-select-${userID}">
+            <option value="guest" ${currentRole === 'guest' ? 'selected' : ''}>Guest</option>
+            <option value="member" ${currentRole === 'member' ? 'selected' : ''}>Member</option>
+            <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>Admin</option>
+          </select>
+          <button onclick="updateRole('${userID}')">Save</button>
+          <button class="cancel-btn" onclick="loadUsers()">Cancel</button>
+        </div>`;
+    }
+
+    async function updateRole(userID) {
+      const role = document.getElementById('role-select-' + userID).value;
+      try {
+        const resp = await fetch(`/api/admin/users/${userID}/role`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role })
+        });
+        if (resp.ok) {
+          showStatus('Role updated', 'success');
+          loadUsers();
+        } else {
+          const data = await resp.json();
+          showStatus(data.error || 'Failed to update role', 'error');
+        }
+      } catch (e) { showStatus('Network error', 'error'); }
+    }
+
+    function showPasswordForm(userID) {
+      const td = document.getElementById('actions-' + userID);
+      td.innerHTML = `
+        <div class="inline-form">
+          <input type="password" id="pw-input-${userID}" placeholder="New password" style="width:140px;">
+          <button onclick="updatePassword('${userID}')">Save</button>
+          <button class="cancel-btn" onclick="loadUsers()">Cancel</button>
+        </div>`;
+      document.getElementById('pw-input-' + userID).focus();
+    }
+
+    async function updatePassword(userID) {
+      const password = document.getElementById('pw-input-' + userID).value;
+      if (!password) { showStatus('Password is required', 'error'); return; }
+      try {
+        const resp = await fetch(`/api/admin/users/${userID}/password`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        if (resp.ok) {
+          showStatus('Password updated', 'success');
+          loadUsers();
+        } else {
+          const data = await resp.json();
+          showStatus(data.error || 'Failed to update password', 'error');
+        }
+      } catch (e) { showStatus('Network error', 'error'); }
+    }
+
+    function confirmDelete(userID, username) {
+      if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+      deleteUser(userID);
+    }
+
+    async function deleteUser(userID) {
+      try {
+        const resp = await fetch(`/api/admin/users/${userID}`, { method: 'DELETE' });
+        if (resp.ok) {
+          showStatus('User deleted', 'success');
+          loadUsers();
+        } else {
+          const data = await resp.json();
+          showStatus(data.error || 'Failed to delete user', 'error');
+        }
+      } catch (e) { showStatus('Network error', 'error'); }
+    }
+
+    function showAddUserModal() {
+      document.getElementById('user-menu').style.display = 'none';
+      document.getElementById('add-user-msg').textContent = '';
+      document.getElementById('new-username').value = '';
+      document.getElementById('new-password').value = '';
+      document.getElementById('new-role').value = 'guest';
+      document.getElementById('add-user-modal').classList.add('active');
+    }
+
+    function hideAddUserModal() {
+      document.getElementById('add-user-modal').classList.remove('active');
+    }
+
+    async function createUser() {
+      const username = document.getElementById('new-username').value.trim();
+      const password = document.getElementById('new-password').value;
+      const role = document.getElementById('new-role').value;
+      const msg = document.getElementById('add-user-msg');
+      if (!username || !password) { msg.textContent = 'Username and password are required'; msg.style.color = '#ff4444'; return; }
+      try {
+        const resp = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, role })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          hideAddUserModal();
+          showStatus(`User "${data.username}" created (${data.role})`, 'success');
+          loadUsers();
+        } else {
+          msg.textContent = data.error || 'Failed to create user';
+          msg.style.color = '#ff4444';
+        }
+      } catch (e) { msg.textContent = 'Network error'; msg.style.color = '#ff4444'; }
+    }
+
+    async function fetchHomeStatus() {
+      const dot = document.getElementById('home-status');
+      try {
+        const resp = await fetch('/api/home-status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.online) {
+          dot.className = 'online';
+          const names = data.homes.map(h => h.name || h.id).join(', ');
+          dot.title = names + ' online';
+        } else {
+          dot.className = 'offline';
+          dot.title = 'No homes connected';
+        }
+        renderHomePanel(data.homes || []);
+      } catch (e) {
+        dot.className = 'offline';
+        dot.title = 'Status unavailable';
+      }
+    }
+
+    function renderHomePanel(homes) {
+      const list = document.getElementById('home-list');
+      if (!list) return;
+      list.innerHTML = '';
+      if (homes.length === 0) {
+        list.innerHTML = '<div style="font-size:13px;color:#555;">No homes</div>';
+        return;
+      }
+      homes.forEach(h => {
+        const item = document.createElement('div');
+        item.className = 'home-item';
+        item.innerHTML = `<span class="home-dot online"></span><span class="home-name">${escapeHtml(h.name || h.id)}</span><button class="scan-btn" onclick="scanHome('${h.id}',this)">Scan</button>`;
+        list.appendChild(item);
+      });
+    }
+
+    async function scanHome(homeID, btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const resp = await fetch(`/api/homes/${homeID}/scan`, { method: 'POST' });
+        if (resp.ok) {
+          btn.innerHTML = '&#10003;';
+          btn.style.color = '#4caf50';
+          btn.style.borderColor = '#4caf50';
+        } else {
+          btn.innerHTML = '&#10007;';
+          btn.style.color = '#f44336';
+          btn.style.borderColor = '#f44336';
+        }
+      } catch (e) {
+        btn.innerHTML = '&#10007;';
+        btn.style.color = '#f44336';
+        btn.style.borderColor = '#f44336';
+      }
+      setTimeout(() => {
+        btn.innerHTML = 'Scan';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+        btn.disabled = false;
+      }, 2000);
+    }
+
+    loadCurrentUser().then(() => {
+      fetchHomeStatus();
+      setInterval(fetchHomeStatus, 30000);
+      loadUsers();
+    });
+  </script>
+</body>
+</html>

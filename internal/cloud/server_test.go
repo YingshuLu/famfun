@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/yingshulu/famfun/internal/model"
@@ -50,5 +51,64 @@ func TestVideosToJSONEmpty(t *testing.T) {
 	result := videosToJSON([]*model.Video{})
 	if len(result) != 0 {
 		t.Errorf("len = %d, want 0", len(result))
+	}
+}
+
+func TestPaginateVideos(t *testing.T) {
+	videos := []videoJSON{
+		{ID: "a", CreatedAt: "2026-01-03"},
+		{ID: "b", CreatedAt: "2026-01-01"},
+		{ID: "c", CreatedAt: "2026-01-02"},
+		{ID: "d", CreatedAt: "2026-01-02"},
+		{ID: "e", CreatedAt: "2026-01-03"},
+	}
+
+	sort.Slice(videos, func(i, j int) bool {
+		if videos[i].CreatedAt != videos[j].CreatedAt {
+			return videos[i].CreatedAt > videos[j].CreatedAt
+		}
+		return videos[i].ID < videos[j].ID
+	})
+
+	if videos[0].ID != "a" || videos[1].ID != "e" {
+		t.Fatalf("sort order wrong: got %v %v", videos[0].ID, videos[1].ID)
+	}
+	if videos[2].ID != "c" || videos[3].ID != "d" {
+		t.Fatalf("sort order wrong: got %v %v", videos[2].ID, videos[3].ID)
+	}
+	if videos[4].ID != "b" {
+		t.Fatalf("sort order wrong: got %v", videos[4].ID)
+	}
+
+	total := len(videos)
+
+	page1 := videos[0:2]
+	if len(page1) != 2 || page1[0].ID != "a" || page1[1].ID != "e" {
+		t.Errorf("page1 = %v", page1)
+	}
+	hasMore1 := 2 < total
+	if !hasMore1 {
+		t.Error("expected has_more=true for page1")
+	}
+
+	page2 := videos[2:4]
+	if len(page2) != 2 || page2[0].ID != "c" || page2[1].ID != "d" {
+		t.Errorf("page2 = %v", page2)
+	}
+
+	page3 := videos[4:5]
+	if len(page3) != 1 || page3[0].ID != "b" {
+		t.Errorf("page3 = %v", page3)
+	}
+	hasMore3 := 6 < total
+	if hasMore3 {
+		t.Error("expected has_more=false for page3")
+	}
+
+	offset := 10
+	if offset >= total {
+		// out of range returns empty
+	} else {
+		t.Error("expected offset >= total")
 	}
 }

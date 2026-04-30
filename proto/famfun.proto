@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package famfun;
+
+option go_package = "github.com/yingshulu/famfun/pkg/proto";
+
+message VideoInfo {
+  string id = 1;
+  string filename = 2;
+  string title = 3;
+  int64 duration = 4;
+  int64 filesize = 5;
+  string resolution = 6;
+  string created_at = 7;
+  string home_server_id = 8;
+  string description = 9;
+  string visibility = 10;
+}
+
+message RegisterRequest {
+  string home_server_id = 1;
+  string name = 2;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message HeartbeatRequest {
+  string home_server_id = 1;
+  repeated string video_ids = 2;
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+}
+
+message VideoListUpdate {
+  string home_server_id = 1;
+  repeated string video_ids = 2;
+}
+
+message GetVideoInfoRequest {
+  string video_id = 1;
+}
+
+message GetVideoInfoResponse {
+  bool success = 1;
+  string error = 2;
+  VideoInfo video = 3;
+}
+
+message GetThumbnailRequest {
+  string video_id = 1;
+}
+
+message GetThumbnailResponse {
+  bool success = 1;
+  string error = 2;
+  bytes content = 3;
+}
+
+message GetPlaylistRequest {
+  string video_id = 1;
+  string request_id = 2;
+}
+
+message GetPlaylistResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  bytes content = 4;
+}
+
+message GetSegmentRequest {
+  string video_id = 1;
+  string segment_name = 2;
+  string request_id = 3;
+}
+
+message GetSegmentResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  bytes content = 4;
+}
+
+message UpdateVideoInfoRequest {
+  string video_id = 1;
+  string title = 2;
+  string description = 3;
+  string visibility = 4;
+}
+
+message UpdateVideoInfoResponse {
+  bool success = 1;
+  string error = 2;
+  VideoInfo video = 3;
+}
+
+message UploadVideoRequest {
+  string filename = 1;
+  int64 filesize = 2;
+  string sha256 = 3;
+  string home_server_id = 4;
+  uint32 total_chunks = 5;
+  string title = 6;
+  string description = 7;
+}
+
+message UploadVideoChunk {
+  bytes data = 1;
+  uint32 chunk_index = 2;
+}
+
+message UploadVideoResponse {
+  bool success = 1;
+  string error = 2;
+  string video_id = 3;
+}
+
+message ScanRequest {
+  string home_server_id = 1;
+}
+
+message ScanResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message Envelope {
+  oneof payload {
+    RegisterRequest register_request = 1;
+    RegisterResponse register_response = 2;
+    HeartbeatRequest heartbeat_request = 3;
+    HeartbeatResponse heartbeat_response = 4;
+    VideoListUpdate video_list_update = 5;
+    GetPlaylistRequest get_playlist_request = 6;
+    GetPlaylistResponse get_playlist_response = 7;
+    GetSegmentRequest get_segment_request = 8;
+    GetSegmentResponse get_segment_response = 9;
+    GetVideoInfoRequest get_video_info_request = 10;
+    GetVideoInfoResponse get_video_info_response = 11;
+    GetThumbnailRequest get_thumbnail_request = 12;
+    GetThumbnailResponse get_thumbnail_response = 13;
+    UpdateVideoInfoRequest update_video_info_request = 14;
+    UpdateVideoInfoResponse update_video_info_response = 15;
+    UploadVideoRequest upload_video_request = 16;
+    UploadVideoChunk upload_video_chunk = 17;
+    UploadVideoResponse upload_video_response = 18;
+    ScanRequest scan_request = 19;
+    ScanResponse scan_response = 20;
+  }
+}

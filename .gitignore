@@ -30,3 +30,12 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+certs/*
+videos/*
+thumbnails/*
+video_streams/*
+frontend/*
+*.db
+*.db-shm
+*.db-wal

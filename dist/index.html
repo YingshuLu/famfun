@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FamFun - Home Video Streaming</title>
+  <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet">
+  <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0f0f23; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; }
+    header { padding: 16px 20px; border-bottom: 1px solid #222; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 24px; font-weight: 700; }
+    #user-info { display: flex; align-items: center; gap: 8px; }
+    #user-info .user-avatar { width: 32px; height: 32px; border-radius: 6px; cursor: pointer; }
+    #user-info .user-name { font-size: 14px; color: #aaa; }
+    #user-menu { display: none; position: absolute; right: 20px; top: 56px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px; padding: 8px 0; z-index: 10; }
+    #user-menu a { display: block; padding: 8px 20px; color: #fff; text-decoration: none; font-size: 14px; }
+    #user-menu a:hover { background: #333; }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 24px; width: 320px; }
+    .modal h3 { margin-bottom: 16px; }
+    .modal input, .modal select { width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid #555; background: #0f0f23; color: #fff; font-size: 14px; margin-bottom: 12px; }
+    .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal button { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-size: 14px; }
+    .modal .btn-primary { background: #4a4aff; color: #fff; }
+    .modal .btn-cancel { background: #333; color: #fff; }
+    .modal .modal-msg { font-size: 13px; margin-bottom: 8px; }
+    #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; padding: 20px; }
+    .card { cursor: pointer; border-radius: 8px; overflow: hidden; background: #1a1a2e; transition: transform 0.2s; }
+    .card:hover { transform: translateY(-4px); }
+    .card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: #333; }
+    .card .info { padding: 12px; }
+    .card h3 { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card .meta { display: flex; gap: 8px; margin-top: 6px; font-size: 12px; color: #aaa; }
+    #player-view { display: none; max-width: 960px; margin: 0 auto; padding: 20px; }
+    #player-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+    #player-title { font-size: 20px; flex: 1; }
+    #info-edit-btn { background: none; border: 1px solid #555; color: #aaa; cursor: pointer; font-size: 13px; padding: 4px 12px; border-radius: 4px; }
+    #info-edit-btn:hover { color: #4a4aff; border-color: #4a4aff; }
+    #title-edit-input { width: 100%; padding: 6px 12px; border-radius: 4px; border: 1px solid #555; background: #1a1a2e; color: #fff; font-size: 18px; margin-bottom: 8px; }
+    #desc-edit-input { width: 100%; padding: 6px 12px; border-radius: 4px; border: 1px solid #555; background: #1a1a2e; color: #fff; font-size: 14px; resize: vertical; min-height: 60px; font-family: inherit; }
+    .desc-text { color: #aaa; font-size: 14px; white-space: pre-wrap; line-height: 1.5; }
+    .desc-clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .desc-more { color: #4a4aff; cursor: pointer; font-size: 13px; margin-top: 4px; display: inline-block; }
+    #loading { text-align: center; color: #888; padding: 60px; font-size: 16px; }
+    #empty { text-align: center; color: #888; padding: 60px; font-size: 18px; display: none; }
+    .play-count { display: flex; align-items: center; gap: 4px; }
+    #comments-section { margin-top: 24px; }
+    #comments-section h3 { font-size: 16px; margin-bottom: 12px; }
+    #comment-form { display: flex; gap: 8px; margin-bottom: 16px; }
+    #comment-input { flex: 1; padding: 8px 12px; border-radius: 4px; border: 1px solid #555; background: #1a1a2e; color: #fff; font-size: 14px; }
+    #comment-submit { padding: 8px 16px; border-radius: 4px; border: none; background: #4a4aff; color: #fff; cursor: pointer; font-size: 14px; }
+    #comment-submit:hover { background: #5c5cff; }
+    #comment-list { max-height: 400px; overflow-y: auto; }
+    .comment-item { background: #1a1a2e; border-radius: 6px; padding: 12px; margin-bottom: 8px; }
+    .comment-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .comment-header .comment-avatar { width: 24px; height: 24px; border-radius: 4px; }
+    .comment-item .comment-author { font-size: 12px; font-weight: 600; color: #4a4aff; }
+    .comment-item .comment-text { font-size: 14px; }
+    .comment-item .comment-time { font-size: 11px; color: #888; margin-top: 4px; }
+    .comment-item .comment-reply-btn { font-size: 11px; color: #888; cursor: pointer; margin-top: 4px; display: inline-block; }
+    .comment-item .comment-reply-btn:hover { color: #4a4aff; }
+    .comment-replies { margin-left: 24px; border-left: 2px solid #333; padding-left: 12px; margin-top: 8px; }
+    #upload-btn { background: #4a4aff; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; display: none; }
+    #upload-btn:hover { background: #5c5cff; }
+    .upload-progress { width: 100%; height: 8px; background: #333; border-radius: 4px; margin: 12px 0; overflow: hidden; }
+    .upload-progress-bar { height: 100%; background: #4a4aff; width: 0%; transition: width 0.2s; border-radius: 4px; }
+    #home-status { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-left: 10px; background: #555; cursor: default; }
+    #home-status.online { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+    #home-status.offline { background: #f44336; }
+    #content-wrapper { display: flex; }
+    #main-content { flex: 1; min-width: 0; }
+    #home-panel { width: 220px; border-left: 1px solid #222; padding: 16px; display: none; flex-shrink: 0; }
+    #home-panel h3 { font-size: 14px; color: #aaa; margin-bottom: 12px; }
+    .home-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #222; }
+    .home-item:last-child { border-bottom: none; }
+    .home-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .home-dot.online { background: #4caf50; box-shadow: 0 0 4px #4caf50; }
+    .home-dot.offline { background: #f44336; }
+    .home-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scan-btn { background: none; border: 1px solid #555; color: #aaa; font-size: 12px; padding: 3px 10px; border-radius: 4px; cursor: pointer; min-width: 52px; display: flex; align-items: center; justify-content: center; gap: 4px; }
+    .scan-btn:hover { color: #4a4aff; border-color: #4a4aff; }
+    .scan-btn .spinner { width: 14px; height: 14px; border: 2px solid #555; border-top-color: #4a4aff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .upload-status { font-size: 13px; color: #aaa; margin-bottom: 8px; }
+    .upload-filename { font-size: 14px; color: #fff; margin-bottom: 12px; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <header id="main-header">
+    <h1><a id="logo-link" href="#" onclick="showGrid();return false;" style="color:#fff;text-decoration:none;">FamFun</a><span id="home-status" title="Checking..."></span></h1>
+    <div id="user-info">
+      <button id="upload-btn" onclick="showUploadModal()">Upload</button>
+      <span class="user-name" id="user-name"></span>
+      <img class="user-avatar" id="user-avatar" onclick="toggleUserMenu()">
+    </div>
+    <div id="user-menu">
+      <a href="#" id="add-user-link" style="display:none" onclick="showAddUserModal()">Add User</a>
+      <a href="#" onclick="logout()">Logout</a>
+    </div>
+  </header>
+  <div id="content-wrapper">
+  <div id="main-content">
+  <div id="loading">Loading videos...</div>
+  <div id="empty">No videos available</div>
+  <div id="grid"></div>
+  <div id="player-view">
+    <div id="player-header">
+      <h2 id="player-title"></h2>
+      <button id="info-edit-btn" style="display:none" onclick="toggleInfoEdit()">Edit</button>
+    </div>
+    <video-js id="vjs-player" class="vjs-big-play-centered" controls preload="auto" fluid></video-js>
+    <div id="info-display" style="margin-top:12px">
+      <div id="player-description" class="desc-text desc-clamped" style="display:none"></div>
+      <span id="desc-more-btn" class="desc-more" style="display:none" onclick="toggleDescExpand()">... more</span>
+    </div>
+    <div id="info-edit-form" style="display:none;margin-top:12px">
+      <input id="title-edit-input" type="text" placeholder="Title">
+      <textarea id="desc-edit-input" placeholder="Description (optional)"></textarea>
+      <select id="visibility-edit" style="width:100%;padding:8px 12px;border-radius:4px;border:1px solid #555;background:#0f0f23;color:#fff;font-size:14px;margin-top:8px;">
+        <option value="guest">Guest (everyone)</option>
+        <option value="member">Member (admin + member)</option>
+        <option value="admin">Admin only</option>
+      </select>
+    </div>
+    <div id="comments-section">
+      <h3>Comments</h3>
+      <div id="comment-form">
+        <input id="comment-input" type="text" placeholder="Add a comment...">
+        <button id="comment-submit" onclick="submitComment()">Post</button>
+      </div>
+      <div id="comment-list"></div>
+    </div>
+  </div>
+  </div>
+  <div id="home-panel">
+    <h3>Home Servers</h3>
+    <div id="home-list"></div>
+  </div>
+  </div>
+  <div class="modal-overlay" id="add-user-modal">
+    <div class="modal">
+      <h3>Add User</h3>
+      <div class="modal-msg" id="add-user-msg"></div>
+      <input id="new-username" type="text" placeholder="Username">
+      <input id="new-password" type="password" placeholder="Password">
+      <select id="new-role"><option value="guest">Guest</option><option value="member">Member</option><option value="admin">Admin</option></select>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="hideAddUserModal()">Cancel</button>
+        <button class="btn-primary" onclick="createUser()">Create</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="upload-modal">
+    <div class="modal" style="width:400px">
+      <h3>Upload Video</h3>
+      <div class="upload-status" id="upload-status"></div>
+      <div class="upload-filename" id="upload-filename"></div>
+      <input type="file" id="upload-file" accept=".mp4,.mkv,.avi,.mov,.webm" style="margin-bottom:12px">
+      <input type="text" id="upload-title" placeholder="Title (default: filename)">
+      <textarea id="upload-description" placeholder="Description (optional)" style="width:100%;padding:8px 12px;border-radius:4px;border:1px solid #555;background:#0f0f23;color:#fff;font-size:14px;margin-bottom:12px;resize:vertical;min-height:60px;font-family:inherit;"></textarea>
+      <select id="upload-home" style="display:none"><option value="">Select home server...</option></select>
+      <div class="upload-progress" id="upload-progress" style="display:none">
+        <div class="upload-progress-bar" id="upload-progress-bar"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="upload-cancel-btn" onclick="hideUploadModal()">Cancel</button>
+        <button class="btn-primary" id="upload-start-btn" onclick="startUpload()" disabled>Upload</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const response = await originalFetch.apply(this, args);
+      if (response.status === 401) {
+        window.location.href = '/login.html';
+        return response;
+      }
+      return response;
+    };
+
+    let player = null;
+    let currentVideoID = null;
+    let currentVideo = null;
+    let currentUser = null;
+    let cachedVideos = null;
+
+    async function loadCurrentUser() {
+      try {
+        const resp = await fetch('/api/me');
+        if (resp.ok) {
+          currentUser = await resp.json();
+          document.getElementById('user-name').textContent = currentUser.username;
+          document.getElementById('user-avatar').src = `/api/avatar/${encodeURIComponent(currentUser.username)}`;
+          if (currentUser.role === 'admin') {
+            document.getElementById('add-user-link').style.display = 'block';
+            document.getElementById('home-panel').style.display = 'block';
+          }
+          if (currentUser.role !== 'guest') {
+            document.getElementById('upload-btn').style.display = 'inline-block';
+          }
+        }
+      } catch (e) {}
+    }
+
+    function toggleUserMenu() {
+      const menu = document.getElementById('user-menu');
+      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#user-info') && !e.target.closest('#user-menu')) {
+        document.getElementById('user-menu').style.display = 'none';
+      }
+    });
+
+    async function logout() {
+      await fetch('/auth/logout', { method: 'POST' });
+      window.location.href = '/login.html';
+    }
+
+    function formatDuration(s) {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.floor(s % 60);
+      const pad = n => n.toString().padStart(2, '0');
+      return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+    }
+
+    function formatSize(bytes) {
+      if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + ' GB';
+      if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+      return (bytes / 1e3).toFixed(1) + ' KB';
+    }
+
+    async function loadVideos() {
+      try {
+        const resp = await fetch('/api/videos');
+        cachedVideos = await resp.json();
+        document.getElementById('loading').style.display = 'none';
+        renderGrid();
+      } catch (e) {
+        document.getElementById('loading').textContent = 'Failed to load videos';
+      }
+    }
+
+    function renderGrid() {
+      if (!cachedVideos || cachedVideos.length === 0) {
+        document.getElementById('empty').style.display = 'block';
+        return;
+      }
+      document.getElementById('empty').style.display = 'none';
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '';
+      cachedVideos.forEach(v => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.onclick = () => playVideo(v);
+        card.innerHTML = `
+          <img src="${v.thumbnail_url}" alt="${v.title}">
+          <div class="info">
+            <h3>${v.title}</h3>
+            <div class="meta">
+              <span>${formatDuration(v.duration)}</span>
+              <span>${formatSize(v.filesize)}</span>
+              ${v.resolution ? `<span>${v.resolution}</span>` : ''}
+              <span class="play-count">&#128065; ${v.play_count || 0}</span>
+              <span class="play-count">&#128172; ${v.comment_count || 0}</span>
+            </div>
+          </div>`;
+        grid.appendChild(card);
+      });
+    }
+
+    function playVideo(v) {
+      currentVideoID = v.id;
+      currentVideo = v;
+      document.getElementById('grid').style.display = 'none';
+      document.getElementById('player-view').style.display = 'block';
+      document.getElementById('player-title').textContent = v.title;
+      document.getElementById('info-edit-btn').style.display = (currentUser && currentUser.role === 'admin') ? 'inline-block' : 'none';
+      document.getElementById('info-edit-btn').textContent = 'Edit';
+      document.getElementById('info-edit-form').style.display = 'none';
+      document.getElementById('info-display').style.display = '';
+      document.getElementById('comment-form').style.display = (currentUser && currentUser.role !== 'guest') ? 'flex' : 'none';
+      showDescription(v.description);
+
+      if (player) { player.dispose(); }
+      const commentsSection = document.getElementById('comments-section');
+      const container = document.getElementById('player-view');
+      const oldEl = document.getElementById('vjs-player');
+      if (oldEl) oldEl.remove();
+      const newEl = document.createElement('video-js');
+      newEl.id = 'vjs-player';
+      newEl.className = 'vjs-big-play-centered';
+      newEl.setAttribute('controls', '');
+      newEl.setAttribute('preload', 'auto');
+      container.insertBefore(newEl, commentsSection);
+
+      player = videojs('vjs-player', { fluid: true, autoplay: true, sources: [{ src: `/api/stream/${v.home_server_id}/${v.id}/index.m3u8`, type: 'application/x-mpegURL' }] });
+
+      v.play_count = (v.play_count || 0) + 1;
+      fetch(`/api/videos/${v.id}/play`, { method: 'POST' });
+      loadComments(v.id);
+    }
+
+    async function loadComments(videoID) {
+      const list = document.getElementById('comment-list');
+      list.innerHTML = '';
+      try {
+        const resp = await fetch(`/api/videos/${videoID}/comments`);
+        const comments = await resp.json();
+        comments.forEach(c => list.appendChild(renderComment(c)));
+      } catch (e) {}
+    }
+
+    function renderComment(c) {
+      const div = document.createElement('div');
+      div.className = 'comment-item';
+      div.dataset.id = c.id;
+      const displayName = c.username || 'Anonymous';
+      div.innerHTML = `<div class="comment-header"><img class="comment-avatar" src="/api/avatar/${encodeURIComponent(displayName)}"><span class="comment-author">${escapeHtml(displayName)}</span></div><div class="comment-text">${escapeHtml(c.content)}</div><div class="comment-time">${c.created_at}</div><span class="comment-reply-btn">Reply</span>`;
+      const replyBtn = div.querySelector('.comment-reply-btn');
+      if (currentUser && currentUser.role !== 'guest') {
+        replyBtn.onclick = () => startReply(c.id, div);
+      } else {
+        replyBtn.style.display = 'none';
+      }
+      if (c.replies && c.replies.length > 0) {
+        const repliesDiv = document.createElement('div');
+        repliesDiv.className = 'comment-replies';
+        c.replies.forEach(r => repliesDiv.appendChild(renderComment(r)));
+        div.appendChild(repliesDiv);
+      }
+      return div;
+    }
+
+    function startReply(parentID, parentDiv) {
+      if (parentDiv.querySelector('.reply-form')) return;
+      const form = document.createElement('div');
+      form.className = 'reply-form';
+      form.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
+      form.innerHTML = `<input type="text" placeholder="Reply..." style="flex:1;padding:6px 10px;border-radius:4px;border:1px solid #555;background:#0f0f23;color:#fff;font-size:13px;"><button style="padding:6px 12px;border-radius:4px;border:none;background:#4a4aff;color:#fff;cursor:pointer;font-size:13px;">Post</button>`;
+      form.querySelector('button').onclick = async () => {
+        const content = form.querySelector('input').value.trim();
+        if (!content) return;
+        try {
+          const resp = await fetch(`/api/videos/${currentVideoID}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content, parent_id: parentID })
+          });
+          const comment = await resp.json();
+          let repliesDiv = parentDiv.querySelector('.comment-replies');
+          if (!repliesDiv) {
+            repliesDiv = document.createElement('div');
+            repliesDiv.className = 'comment-replies';
+            parentDiv.appendChild(repliesDiv);
+          }
+          repliesDiv.appendChild(renderComment(comment));
+          if (currentVideo) currentVideo.comment_count = (currentVideo.comment_count || 0) + 1;
+          form.remove();
+        } catch (e) {}
+      };
+      parentDiv.appendChild(form);
+      form.querySelector('input').focus();
+    }
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    async function submitComment() {
+      const input = document.getElementById('comment-input');
+      const content = input.value.trim();
+      if (!content || !currentVideoID) return;
+      try {
+        const resp = await fetch(`/api/videos/${currentVideoID}/comments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+        const comment = await resp.json();
+        document.getElementById('comment-list').appendChild(renderComment(comment));
+        if (currentVideo) currentVideo.comment_count = (currentVideo.comment_count || 0) + 1;
+        input.value = '';
+      } catch (e) {}
+    }
+
+    function showGrid() {
+      if (player) { player.dispose(); player = null; }
+      currentVideoID = null;
+      currentVideo = null;
+      document.getElementById('player-view').style.display = 'none';
+      document.getElementById('grid').style.display = 'grid';
+      renderGrid();
+    }
+
+    function showDescription(desc) {
+      const descEl = document.getElementById('player-description');
+      const moreBtn = document.getElementById('desc-more-btn');
+      if (desc) {
+        descEl.textContent = desc;
+        descEl.style.display = 'block';
+        descEl.classList.add('desc-clamped');
+        moreBtn.textContent = '... more';
+        requestAnimationFrame(() => {
+          moreBtn.style.display = descEl.scrollHeight > descEl.clientHeight ? 'inline-block' : 'none';
+        });
+      } else {
+        descEl.style.display = 'none';
+        moreBtn.style.display = 'none';
+      }
+    }
+
+    function toggleDescExpand() {
+      const descEl = document.getElementById('player-description');
+      const moreBtn = document.getElementById('desc-more-btn');
+      if (descEl.classList.contains('desc-clamped')) {
+        descEl.classList.remove('desc-clamped');
+        moreBtn.textContent = 'show less';
+      } else {
+        descEl.classList.add('desc-clamped');
+        moreBtn.textContent = '... more';
+      }
+    }
+
+    async function toggleInfoEdit() {
+      const btn = document.getElementById('info-edit-btn');
+      if (btn.textContent === 'Edit') {
+        document.getElementById('info-display').style.display = 'none';
+        document.getElementById('info-edit-form').style.display = 'block';
+        document.getElementById('title-edit-input').value = document.getElementById('player-title').textContent;
+        document.getElementById('desc-edit-input').value = currentVideo ? (currentVideo.description || '') : '';
+        document.getElementById('visibility-edit').value = currentVideo ? (currentVideo.visibility || 'member') : 'member';
+        btn.textContent = 'Save';
+        document.getElementById('title-edit-input').focus();
+      } else {
+        const newTitle = document.getElementById('title-edit-input').value.trim();
+        if (!newTitle || !currentVideoID) return;
+        const newDesc = document.getElementById('desc-edit-input').value.trim();
+        const newVisibility = document.getElementById('visibility-edit').value;
+        try {
+          const resp = await fetch(`/api/videos/${currentVideoID}/info`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle, description: newDesc, visibility: newVisibility })
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            document.getElementById('player-title').textContent = data.title;
+            if (currentVideo) {
+              currentVideo.title = data.title;
+              currentVideo.description = data.description;
+              currentVideo.visibility = data.visibility;
+            }
+            showDescription(data.description);
+          }
+        } catch (e) {}
+        document.getElementById('info-edit-form').style.display = 'none';
+        document.getElementById('info-display').style.display = '';
+        btn.textContent = 'Edit';
+      }
+    }
+
+    function showAddUserModal() {
+      document.getElementById('user-menu').style.display = 'none';
+      document.getElementById('add-user-msg').textContent = '';
+      document.getElementById('new-username').value = '';
+      document.getElementById('new-password').value = '';
+      document.getElementById('new-role').value = 'guest';
+      document.getElementById('add-user-modal').classList.add('active');
+    }
+
+    function hideAddUserModal() {
+      document.getElementById('add-user-modal').classList.remove('active');
+    }
+
+    async function createUser() {
+      const username = document.getElementById('new-username').value.trim();
+      const password = document.getElementById('new-password').value;
+      const role = document.getElementById('new-role').value;
+      const msg = document.getElementById('add-user-msg');
+      if (!username || !password) { msg.textContent = 'Username and password are required'; msg.style.color = '#ff4444'; return; }
+      try {
+        const resp = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, role })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          msg.textContent = `User "${data.username}" created (${data.role})`;
+          msg.style.color = '#44ff44';
+          document.getElementById('new-username').value = '';
+          document.getElementById('new-password').value = '';
+        } else {
+          msg.textContent = data.error || 'Failed to create user';
+          msg.style.color = '#ff4444';
+        }
+      } catch (e) { msg.textContent = 'Network error'; msg.style.color = '#ff4444'; }
+    }
+
+    async function showUploadModal() {
+      document.getElementById('user-menu').style.display = 'none';
+      document.getElementById('upload-file').value = '';
+      document.getElementById('upload-filename').textContent = '';
+      document.getElementById('upload-status').textContent = '';
+      document.getElementById('upload-progress').style.display = 'none';
+      document.getElementById('upload-progress-bar').style.width = '0%';
+      document.getElementById('upload-start-btn').disabled = true;
+      document.getElementById('upload-start-btn').textContent = 'Upload';
+      document.getElementById('upload-cancel-btn').disabled = false;
+      document.getElementById('upload-title').value = '';
+      document.getElementById('upload-description').value = '';
+
+      const homeSelect = document.getElementById('upload-home');
+      homeSelect.innerHTML = '<option value="">Loading...</option>';
+      homeSelect.style.display = 'block';
+
+      document.getElementById('upload-modal').classList.add('active');
+
+      try {
+        const resp = await fetch('/api/homes');
+        const homes = await resp.json();
+        homeSelect.innerHTML = '';
+        if (homes.length === 0) {
+          homeSelect.innerHTML = '<option value="">No home servers connected</option>';
+          return;
+        }
+        homes.forEach(h => {
+          const opt = document.createElement('option');
+          opt.value = h.id;
+          opt.textContent = h.name || h.id;
+          homeSelect.appendChild(opt);
+        });
+        if (homes.length === 1) homeSelect.value = homes[0].id;
+      } catch (e) {
+        homeSelect.innerHTML = '<option value="">Failed to load</option>';
+      }
+    }
+
+    document.getElementById('upload-file').addEventListener('change', function() {
+      const file = this.files[0];
+      if (file) {
+        document.getElementById('upload-filename').textContent = file.name + ' (' + formatSize(file.size) + ')';
+        document.getElementById('upload-start-btn').disabled = false;
+        const titleInput = document.getElementById('upload-title');
+        if (!titleInput.value) {
+          titleInput.value = file.name.replace(/\.[^.]+$/, '');
+        }
+      } else {
+        document.getElementById('upload-filename').textContent = '';
+        document.getElementById('upload-start-btn').disabled = true;
+      }
+    });
+
+    function hideUploadModal() {
+      document.getElementById('upload-modal').classList.remove('active');
+    }
+
+    async function computeSHA256(file) {
+      const chunkSize = 2 * 1024 * 1024;
+      const chunks = Math.ceil(file.size / chunkSize);
+      const hashBuffer = [];
+      let offset = 0;
+
+      const subtle = crypto.subtle;
+      const totalSize = file.size;
+
+      const fullBuffer = new Uint8Array(file.size);
+      let pos = 0;
+
+      for (let i = 0; i < chunks; i++) {
+        const slice = file.slice(offset, offset + chunkSize);
+        const arrayBuf = await slice.arrayBuffer();
+        const chunk = new Uint8Array(arrayBuf);
+        fullBuffer.set(chunk, pos);
+        pos += chunk.length;
+        offset += chunkSize;
+
+        const pct = Math.round((offset / totalSize) * 100);
+        document.getElementById('upload-status').textContent = `Preparing... ${Math.min(pct, 100)}%`;
+      }
+
+      const hashBuf = await subtle.digest('SHA-256', fullBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuf));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function startUpload() {
+      const fileInput = document.getElementById('upload-file');
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const homeID = document.getElementById('upload-home').value;
+      if (!homeID) {
+        document.getElementById('upload-status').textContent = 'Please select a home server';
+        document.getElementById('upload-status').style.color = '#ff4444';
+        return;
+      }
+
+      document.getElementById('upload-start-btn').disabled = true;
+      document.getElementById('upload-cancel-btn').disabled = true;
+      document.getElementById('upload-status').style.color = '#aaa';
+
+      let sha256;
+      try {
+        sha256 = await computeSHA256(file);
+      } catch (e) {
+        document.getElementById('upload-status').textContent = 'Failed to compute hash';
+        document.getElementById('upload-status').style.color = '#ff4444';
+        document.getElementById('upload-start-btn').disabled = false;
+        document.getElementById('upload-cancel-btn').disabled = false;
+        return;
+      }
+
+      document.getElementById('upload-status').textContent = 'Uploading...';
+      document.getElementById('upload-progress').style.display = 'block';
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('home_server_id', homeID);
+      formData.append('sha256', sha256);
+      formData.append('title', document.getElementById('upload-title').value.trim());
+      formData.append('description', document.getElementById('upload-description').value.trim());
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload');
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          document.getElementById('upload-progress-bar').style.width = pct + '%';
+          document.getElementById('upload-status').textContent = `Uploading... ${pct}%`;
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 200) {
+          document.getElementById('upload-status').textContent = 'Upload complete! Video is being processed...';
+          document.getElementById('upload-status').style.color = '#44ff44';
+          document.getElementById('upload-start-btn').textContent = 'Done';
+          document.getElementById('upload-cancel-btn').disabled = false;
+          document.getElementById('upload-cancel-btn').textContent = 'Close';
+          setTimeout(() => { cachedVideos = null; loadVideos(); }, 3000);
+        } else {
+          let msg = 'Upload failed';
+          try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
+          document.getElementById('upload-status').textContent = msg;
+          document.getElementById('upload-status').style.color = '#ff4444';
+          document.getElementById('upload-start-btn').disabled = false;
+          document.getElementById('upload-cancel-btn').disabled = false;
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        document.getElementById('upload-status').textContent = 'Network error';
+        document.getElementById('upload-status').style.color = '#ff4444';
+        document.getElementById('upload-start-btn').disabled = false;
+        document.getElementById('upload-cancel-btn').disabled = false;
+      });
+
+      xhr.send(formData);
+    }
+
+    let homeStatusTimer = null;
+
+    async function fetchHomeStatus() {
+      const dot = document.getElementById('home-status');
+      try {
+        const resp = await fetch('/api/home-status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.online) {
+          dot.className = 'online';
+          const names = data.homes.map(h => h.name || h.id).join(', ');
+          dot.title = names + ' online';
+        } else {
+          dot.className = 'offline';
+          dot.title = 'No homes connected';
+        }
+        renderHomePanel(data.homes || []);
+      } catch (e) {
+        dot.className = 'offline';
+        dot.title = 'Status unavailable';
+      }
+    }
+
+    function renderHomePanel(homes) {
+      const list = document.getElementById('home-list');
+      if (!list) return;
+      list.innerHTML = '';
+      if (homes.length === 0) {
+        list.innerHTML = '<div style="font-size:13px;color:#555;">No homes</div>';
+        return;
+      }
+      homes.forEach(h => {
+        const item = document.createElement('div');
+        item.className = 'home-item';
+        item.innerHTML = `<span class="home-dot online"></span><span class="home-name">${escapeHtml(h.name || h.id)}</span><button class="scan-btn" onclick="scanHome('${h.id}',this)">Scan</button>`;
+        list.appendChild(item);
+      });
+    }
+
+    async function scanHome(homeID, btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const resp = await fetch(`/api/homes/${homeID}/scan`, { method: 'POST' });
+        if (resp.ok) {
+          btn.innerHTML = '&#10003;';
+          btn.style.color = '#4caf50';
+          btn.style.borderColor = '#4caf50';
+        } else {
+          btn.innerHTML = '&#10007;';
+          btn.style.color = '#f44336';
+          btn.style.borderColor = '#f44336';
+        }
+      } catch (e) {
+        btn.innerHTML = '&#10007;';
+        btn.style.color = '#f44336';
+        btn.style.borderColor = '#f44336';
+      }
+      setTimeout(() => {
+        btn.innerHTML = 'Scan';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+        btn.disabled = false;
+      }, 2000);
+    }
+
+    function startHomeStatusPolling() {
+      fetchHomeStatus();
+      homeStatusTimer = setInterval(fetchHomeStatus, 30000);
+    }
+
+    loadCurrentUser().then(startHomeStatusPolling);
+    loadVideos();
+  </script>
+</body>
+</html>

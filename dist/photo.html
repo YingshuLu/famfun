@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家庭相册</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #f5f5f5;
+            --card-bg: #ffffff;
+            --text: #444444;
+            --text-light: #999999;
+            --shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
+            --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 40px 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 300;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 18px;
+        }
+
+        .photo-item {
+            background-color: var(--card-bg);
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            cursor: pointer;
+            transition: var(--transition);
+            aspect-ratio: 4/3;
+        }
+
+        .photo-item:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .photo-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: var(--transition);
+        }
+
+        .photo-item:hover img {
+            transform: scale(1.03);
+        }
+
+        /* 灯箱样式 */
+        .lightbox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.92);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 30px;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox-content {
+            max-width: 95%;
+            max-height: 95%;
+            position: relative;
+        }
+
+        .lightbox-content img {
+            max-width: 100%;
+            max-height: 85vh;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: -35px;
+            right: 0;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1.8rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .lightbox-close:hover {
+            color: white;
+        }
+
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 2.5rem;
+            cursor: pointer;
+            transition: var(--transition);
+            user-select: none;
+        }
+
+        .lightbox-nav:hover {
+            color: white;
+        }
+
+        .lightbox-prev {
+            left: -50px;
+        }
+
+        .lightbox-next {
+            right: -50px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            body {
+                padding: 24px 16px;
+            }
+
+            .header h1 {
+                font-size: 1.6rem;
+            }
+
+            .gallery {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 12px;
+            }
+
+            .lightbox {
+                padding: 20px;
+            }
+
+            .lightbox-nav {
+                font-size: 2rem;
+            }
+
+            .lightbox-prev {
+                left: -35px;
+            }
+
+            .lightbox-next {
+                right: -35px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>家庭相册</h1>
+        <p>记录日常的小美好</p>
+    </div>
+
+    <div class="gallery" id="gallery">
+        <!-- 在这里添加你的照片 -->
+        <div class="photo-item">
+            <img src="https://picsum.photos/seed/family1/800/600" alt="照片1">
+        </div>
+        <div class="photo-item">
+            <img src="https://picsum.photos/seed/family2/800/600" alt="照片2">
+        </div>
+        <div class="photo-item">
+            <img src="https://picsum.photos/seed/family3/800/600" alt="照片3">
+        </div>
+        <div class="photo-item">
+            <img src="https://picsum.photos/seed/family4/800/600" alt="照片4">
+        </div>
+        <div class="photo-item">
+            <img src="https://picsum.photos/seed/family5/800/600" alt="照片5">
+        </div>
+        <div class="photo-item">
+            <img src="https://picsum.photos/seed/family6/800/600" alt="照片6">
+        </div>
+    </div>
+
+    <!-- 灯箱 -->
+    <div class="lightbox" id="lightbox">
+        <div class="lightbox-content">
+            <div class="lightbox-close" id="close">&times;</div>
+            <div class="lightbox-nav lightbox-prev" id="prev">&#8249;</div>
+            <img src="" alt="" id="lightbox-img">
+            <div class="lightbox-nav lightbox-next" id="next">&#8250;</div>
+        </div>
+    </div>
+
+    <script>
+        const gallery = document.getElementById('gallery');
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+        const closeBtn = document.getElementById('close');
+        const prevBtn = document.getElementById('prev');
+        const nextBtn = document.getElementById('next');
+
+        let currentIndex = 0;
+        const photos = Array.from(gallery.querySelectorAll('.photo-item'));
+
+        // 打开灯箱
+        photos.forEach((photo, index) => {
+            photo.addEventListener('click', () => {
+                currentIndex = index;
+                updateLightbox();
+                lightbox.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            });
+        });
+
+        // 关闭灯箱
+        closeBtn.addEventListener('click', closeLightbox);
+
+        // 点击背景关闭
+        lightbox.addEventListener('click', (e) => {
+            if (e.target === lightbox) {
+                closeLightbox();
+            }
+        });
+
+        // 上一张
+        prevBtn.addEventListener('click', () => {
+            currentIndex = (currentIndex - 1 + photos.length) % photos.length;
+            updateLightbox();
+        });
+
+        // 下一张
+        nextBtn.addEventListener('click', () => {
+            currentIndex = (currentIndex + 1) % photos.length;
+            updateLightbox();
+        });
+
+        // 键盘导航
+        document.addEventListener('keydown', (e) => {
+            if (!lightbox.classList.contains('active')) return;
+            
+            if (e.key === 'Escape') {
+                closeLightbox();
+            } else if (e.key === 'ArrowLeft') {
+                currentIndex = (currentIndex - 1 + photos.length) % photos.length;
+                updateLightbox();
+            } else if (e.key === 'ArrowRight') {
+                currentIndex = (currentIndex + 1) % photos.length;
+                updateLightbox();
+            }
+        });
+
+        function closeLightbox() {
+            lightbox.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        // 更新灯箱内容
+        function updateLightbox() {
+            const photo = photos[currentIndex];
+            const img = photo.querySelector('img');
+            
+            lightboxImg.src = img.src;
+            lightboxImg.alt = img.alt;
+        }
+    </script>
+</body>
+</html>

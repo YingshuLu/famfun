@@ -63,17 +63,18 @@ func (s *QUICServer) Close() error {
 }
 
 func (s *QUICServer) handleConnection(ctx context.Context, conn *quic.Conn) {
+	defer conn.CloseWithError(0, "closing")
 	stream, err := conn.AcceptStream(ctx)
 	if err != nil {
 		log.Printf("accept stream error: %v", err)
 		return
 	}
+	defer stream.Close()
 
 	log.Println("Quic server accept a new connection")
 	homeConn, err := s.performRegistration(conn, stream)
 	if err != nil {
 		log.Printf("registration failed: %v", err)
-		stream.Close()
 		return
 	}
 	defer s.cleanupConnection(homeConn)

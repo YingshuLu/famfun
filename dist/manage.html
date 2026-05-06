@@ -65,6 +65,21 @@
     .status-msg { font-size: 13px; padding: 8px 12px; border-radius: 4px; margin-bottom: 16px; display: none; }
     .status-msg.success { display: block; background: #4caf5022; color: #6fcf77; }
     .status-msg.error { display: block; background: #f4433622; color: #f44336; }
+    .section-card { margin-top: 28px; padding-top: 24px; border-top: 1px solid #222; }
+    .section-desc { color: #8e93b5; font-size: 13px; margin-bottom: 14px; max-width: 760px; line-height: 1.5; }
+    .home-key-table { width: 100%; border-collapse: collapse; }
+    .home-key-table th { text-align: left; padding: 10px 12px; font-size: 13px; color: #aaa; border-bottom: 1px solid #333; font-weight: 600; }
+    .home-key-table td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #222; vertical-align: top; }
+    .home-key-table tr:hover { background: #1a1a2e; }
+    .key-preview { max-width: 420px; white-space: pre-wrap; word-break: break-word; color: #bfc5e2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .key-edit-box { width: 100%; min-height: 132px; resize: vertical; padding: 10px 12px; border-radius: 4px; border: 1px solid #555; background: #0f0f23; color: #fff; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .home-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .home-badge.online { background: #4caf5033; color: #6fcf77; }
+    .home-badge.offline { background: #6663; color: #bbb; }
+    @media (max-width: 960px) {
+      #content-wrapper { flex-direction: column; }
+      #home-panel { width: 100%; border-left: none; border-top: 1px solid #222; }
+    }
   </style>
 </head>
 <body>
@@ -99,6 +114,27 @@
         </thead>
         <tbody id="user-tbody"></tbody>
       </table>
+
+      <section class="section-card">
+        <div class="section-header">
+          <h2>Home Management</h2>
+          <button class="btn-add" onclick="showAddHomeModal()">Add Home</button>
+        </div>
+        <p class="section-desc">Store the RSA public key for each home server. The cloud server will use the saved key for that home ID to verify the QUIC register request signature before accepting the home connection.</p>
+        <table class="home-key-table">
+          <thead>
+            <tr>
+              <th>Home ID</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Updated</th>
+              <th>Public Key</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="home-key-tbody"></tbody>
+        </table>
+      </section>
     </div>
     <div id="home-panel">
       <h3>Home Servers</h3>
@@ -120,6 +156,19 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="add-home-modal">
+    <div class="modal" style="width: 520px;">
+      <h3>Add Home</h3>
+      <div class="modal-msg" id="add-home-msg"></div>
+      <input id="new-home-id" type="text" placeholder="Home server ID">
+      <textarea id="new-home-key" placeholder="Paste RSA public key PEM" style="width:100%;min-height:180px;resize:vertical;padding:10px 12px;border-radius:4px;border:1px solid #555;background:#0f0f23;color:#fff;font-size:13px;font-family:ui-monospace, SFMono-Regular, Menlo, monospace;margin-bottom:12px;"></textarea>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="hideAddHomeModal()">Cancel</button>
+        <button class="btn-primary" onclick="createHome()">Create</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const originalFetch = window.fetch;
     window.fetch = async function(...args) {
@@ -132,6 +181,7 @@
     };
 
     let currentUser = null;
+    let managedHomes = [];
 
     async function loadCurrentUser() {
       try {
@@ -188,6 +238,15 @@
       } catch (e) {}
     }
 
+    async function loadManagedHomes() {
+      try {
+        const resp = await fetch('/api/admin/homes/keys');
+        if (!resp.ok) return;
+        managedHomes = await resp.json();
+        renderManagedHomes(managedHomes);
+      } catch (e) {}
+    }
+
     function renderUsers(users) {
       const tbody = document.getElementById('user-tbody');
       tbody.innerHTML = '';
@@ -211,6 +270,135 @@
           </td>`;
         tbody.appendChild(tr);
       });
+    }
+
+    function shortKeyPreview(value) {
+      if (!value) return '<span style="color:#666;">Not configured</span>';
+      const trimmed = value.trim();
+      const lines = trimmed.split('\n');
+      const preview = lines.slice(0, 3).join('\n');
+      return escapeHtml(preview + (lines.length > 3 ? '\n...' : ''));
+    }
+
+    function renderManagedHomes(homes) {
+      const tbody = document.getElementById('home-key-tbody');
+      tbody.innerHTML = '';
+      if (!homes || homes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#555;padding:40px;">No home servers configured</td></tr>';
+        return;
+      }
+
+      homes.forEach(home => {
+        const tr = document.createElement('tr');
+        const statusClass = home.online ? 'online' : 'offline';
+        const statusLabel = home.online ? 'Online' : 'Offline';
+        tr.innerHTML = `
+          <td>${escapeHtml(home.id || '')}</td>
+          <td>${escapeHtml(home.name || '-')}</td>
+          <td><span class="home-badge ${statusClass}">${statusLabel}</span></td>
+          <td>${escapeHtml(home.updated_at || '-')}</td>
+          <td><div class="key-preview">${shortKeyPreview(home.public_key)}</div></td>
+          <td id="home-actions-${escapeHtml(home.id || '')}">
+            <button class="action-btn" onclick="showHomeKeyForm('${escapeHtml(home.id || '')}')">Edit</button>
+            <button class="action-btn danger" onclick="confirmDeleteHome('${escapeHtml(home.id || '')}')">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function showHomeKeyForm(homeID) {
+      const td = document.getElementById('home-actions-' + homeID);
+      const home = managedHomes.find(item => item.id === homeID);
+      td.innerHTML = `
+        <div class="inline-form" style="display:flex;flex-direction:column;align-items:stretch;gap:8px;min-width:260px;">
+          <textarea id="home-key-input-${homeID}" class="key-edit-box" placeholder="Paste RSA public key PEM"></textarea>
+          <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <button onclick="updateHomeKey('${homeID}')">Save</button>
+            <button class="cancel-btn" onclick="loadManagedHomes()">Cancel</button>
+          </div>
+        </div>`;
+      document.getElementById('home-key-input-' + homeID).value = home ? (home.public_key || '') : '';
+    }
+
+    async function upsertHomeKey(homeID, publicKey) {
+      if (!homeID || !publicKey) {
+        throw new Error('Home ID and public key are required');
+      }
+
+      const resp = await fetch(`/api/admin/homes/${encodeURIComponent(homeID)}/public-key`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_key: publicKey })
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.error || 'Failed to save public key');
+      }
+      return data;
+    }
+
+    function showAddHomeModal() {
+      document.getElementById('user-menu').style.display = 'none';
+      document.getElementById('add-home-msg').textContent = '';
+      document.getElementById('new-home-id').value = '';
+      document.getElementById('new-home-key').value = '';
+      document.getElementById('add-home-modal').classList.add('active');
+    }
+
+    function hideAddHomeModal() {
+      document.getElementById('add-home-modal').classList.remove('active');
+    }
+
+    async function createHome() {
+      const homeID = document.getElementById('new-home-id').value.trim();
+      const publicKey = document.getElementById('new-home-key').value.trim();
+      const msg = document.getElementById('add-home-msg');
+      if (!homeID || !publicKey) {
+        msg.textContent = 'Home ID and public key are required';
+        msg.style.color = '#ff4444';
+        return;
+      }
+      try {
+        const data = await upsertHomeKey(homeID, publicKey);
+        hideAddHomeModal();
+        showStatus(`Saved RSA public key for ${data.id}`, 'success');
+        loadManagedHomes();
+      } catch (e) {
+        msg.textContent = e.message || 'Network error';
+        msg.style.color = '#ff4444';
+      }
+    }
+
+    async function updateHomeKey(homeID) {
+      const publicKey = document.getElementById('home-key-input-' + homeID).value.trim();
+      try {
+        const data = await upsertHomeKey(homeID, publicKey);
+        showStatus(`Updated RSA public key for ${data.id}`, 'success');
+        loadManagedHomes();
+      } catch (e) {
+        showStatus(e.message || 'Network error', 'error');
+      }
+    }
+
+    function confirmDeleteHome(homeID) {
+      if (!confirm(`Delete home "${homeID}"? This removes the stored public key.`)) return;
+      deleteHome(homeID);
+    }
+
+    async function deleteHome(homeID) {
+      try {
+        const resp = await fetch(`/api/admin/homes/${encodeURIComponent(homeID)}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok) {
+          showStatus(data.error || 'Failed to delete home', 'error');
+          return;
+        }
+        showStatus(`Deleted home ${homeID}`, 'success');
+        loadManagedHomes();
+      } catch (e) {
+        showStatus('Network error', 'error');
+      }
     }
 
     function showRoleForm(userID, currentRole) {
@@ -398,6 +586,7 @@
       fetchHomeStatus();
       setInterval(fetchHomeStatus, 30000);
       loadUsers();
+      loadManagedHomes();
     });
   </script>
 </body>

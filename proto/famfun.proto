@@ -20,6 +20,12 @@ message VideoInfo {
 message RegisterRequest {
   string home_server_id = 1;
   string name = 2;
+  bytes signature = 3;
+  bytes challenge = 4;
+}
+
+message RegisterChallenge {
+  bytes challenge = 1;
 }
 
 message RegisterResponse {
@@ -151,5 +157,6 @@ message Envelope {
     UploadVideoResponse upload_video_response = 18;
     ScanRequest scan_request = 19;
     ScanResponse scan_response = 20;
+    RegisterChallenge register_challenge = 21;
   }
 }

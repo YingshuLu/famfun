@@ -41,7 +41,7 @@ func main() {
 		log.Fatalf("load TLS config: %v", err)
 	}
 
-	quicServer := cloud.NewQUICServer(cfg.quicAddr, tlsConfig, homeManager)
+	quicServer := cloud.NewQUICServer(cfg.quicAddr, tlsConfig, homeManager, videoStore)
 	go startQUICServer(ctx, quicServer)
 
 	httpServer := cloud.NewCloudServer(homeManager, streamProxy, cache, videoStore, cfg.distDir)

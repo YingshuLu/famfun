@@ -64,6 +64,11 @@ func createTables(db *sql.DB) error {
 			content TEXT NOT NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
+		CREATE TABLE IF NOT EXISTS home_public_keys (
+			home_id TEXT PRIMARY KEY,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			public_key TEXT NOT NULL
+		);
 	`)
 	return err
 }

@@ -27,9 +27,14 @@ type HomeServer struct {
 	converter       HLSConverter
 	thumbGen        ThumbnailGenerator
 	connector       CloudConnector
+	registerSigner  RegisterSigner
 	videos          map[string]*model.Video
 	mu              sync.RWMutex
 	videoProcessors []func(*model.Video)
+}
+
+func (s *HomeServer) SetRegisterSigner(signer RegisterSigner) {
+	s.registerSigner = signer
 }
 
 func NewHomeServer(
@@ -71,8 +76,13 @@ func (s *HomeServer) Run(ctx context.Context, cloudAddr string) error {
 		}
 
 		if err := s.register(); err != nil {
-			return fmt.Errorf("register: %w", err)
+			log.Printf("register error: %v", err)
+			s.connector.Close()
+			time.Sleep(5 * time.Second)
+			continue
 		}
+
+		log.Printf("registered with cloud successfully")
 
 		if reconnect {
 			s.publishAllVideos()
@@ -203,12 +213,25 @@ func (s *HomeServer) generateThumbnail(v *model.Video) {
 }
 
 func (s *HomeServer) register() error {
+	challenge, err := s.connector.GetRegisterChallenge()
+	if err != nil {
+		return fmt.Errorf("get register challenge: %w", err)
+	}
+
+	req := &pb.RegisterRequest{
+		HomeServerId: s.homeID,
+		Name:         s.homeName,
+		Challenge:    challenge,
+	}
+	if s.registerSigner != nil {
+		if err := s.registerSigner.SignRegisterRequest(req); err != nil {
+			return fmt.Errorf("sign register request: %w", err)
+		}
+	}
+
 	env := &pb.Envelope{
 		Payload: &pb.Envelope_RegisterRequest{
-			RegisterRequest: &pb.RegisterRequest{
-				HomeServerId: s.homeID,
-				Name:         s.homeName,
-			},
+			RegisterRequest: req,
 		},
 	}
 	return s.connector.SendEnvelope(env)

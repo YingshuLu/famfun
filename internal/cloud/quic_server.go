@@ -3,6 +3,7 @@ package cloud
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"sync"
@@ -18,14 +19,16 @@ type QUICServer struct {
 	addr         string
 	tlsConfig    *tls.Config
 	homeRegistry HomeRegistry
+	videoStore   *VideoStore
 	listener     *quic.Listener
 }
 
-func NewQUICServer(addr string, tlsConfig *tls.Config, registry HomeRegistry) *QUICServer {
+func NewQUICServer(addr string, tlsConfig *tls.Config, registry HomeRegistry, videoStore *VideoStore) *QUICServer {
 	return &QUICServer{
 		addr:         addr,
 		tlsConfig:    tlsConfig,
 		homeRegistry: registry,
+		videoStore:   videoStore,
 	}
 }
 
@@ -66,6 +69,7 @@ func (s *QUICServer) handleConnection(ctx context.Context, conn *quic.Conn) {
 		return
 	}
 
+	log.Println("Quic server accept a new connection")
 	homeConn, err := s.performRegistration(conn, stream)
 	if err != nil {
 		log.Printf("registration failed: %v", err)
@@ -79,6 +83,31 @@ func (s *QUICServer) handleConnection(ctx context.Context, conn *quic.Conn) {
 }
 
 func (s *QUICServer) performRegistration(conn *quic.Conn, stream *quic.Stream) (*quicHomeConn, error) {
+	challengeReqEnv, err := protocol.ReadMessage(stream)
+	if err != nil {
+		return nil, fmt.Errorf("read register challenge request: %w", err)
+	}
+	challengeReq := challengeReqEnv.GetRegisterChallenge()
+	if challengeReq == nil || len(challengeReq.Challenge) == 0 {
+		return nil, fmt.Errorf("expected register challenge request, got %T", challengeReqEnv.Payload)
+	}
+
+	serverChallenge, err := protocol.GenerateChallenge(16)
+	if err != nil {
+		return nil, fmt.Errorf("generate register challenge: %w", err)
+	}
+
+	challengeRspEnv := &pb.Envelope{
+		Payload: &pb.Envelope_RegisterChallenge{
+			RegisterChallenge: &pb.RegisterChallenge{
+				Challenge: serverChallenge,
+			},
+		},
+	}
+	if err := protocol.WriteMessage(stream, challengeRspEnv); err != nil {
+		return nil, fmt.Errorf("send register challenge: %w", err)
+	}
+
 	env, err := protocol.ReadMessage(stream)
 	if err != nil {
 		return nil, fmt.Errorf("read register message: %w", err)
@@ -89,8 +118,12 @@ func (s *QUICServer) performRegistration(conn *quic.Conn, stream *quic.Stream) (
 		return nil, fmt.Errorf("expected RegisterRequest, got %T", env.Payload)
 	}
 
-	hc := newQuicHomeConn(req.HomeServerId, req.Name, conn, stream)
+	combinedChallenge := append(challengeReq.Challenge, serverChallenge...)
+	if err := s.verifyRegisterRequest(req, combinedChallenge); err != nil {
+		return nil, fmt.Errorf("verify register request: %w", err)
+	}
 
+	hc := newQuicHomeConn(req.HomeServerId, req.Name, conn, stream)
 	if err := s.homeRegistry.RegisterHome(req.HomeServerId, req.Name, hc); err != nil {
 		return nil, fmt.Errorf("register home: %w", err)
 	}
@@ -109,6 +142,52 @@ func (s *QUICServer) performRegistration(conn *quic.Conn, stream *quic.Stream) (
 	}
 
 	return hc, nil
+}
+
+func (s *QUICServer) verifyRegisterRequest(req *pb.RegisterRequest, expectedChallenge []byte) error {
+	if s.videoStore == nil {
+		return fmt.Errorf("video store not configured")
+	}
+	if len(expectedChallenge) == 0 {
+		return fmt.Errorf("missing expected register challenge")
+	}
+	if len(req.Challenge) == 0 {
+		return fmt.Errorf("missing register challenge in request")
+	}
+	if !equalBytes(req.Challenge, expectedChallenge) {
+		return fmt.Errorf(
+			"register challenge mismatch: expected %s, got %s",
+			hex.EncodeToString(expectedChallenge),
+			hex.EncodeToString(req.Challenge),
+		)
+	}
+
+	storedKey, err := s.videoStore.GetHomePublicKey(req.HomeServerId)
+	if err != nil {
+		return err
+	}
+
+	pub, err := protocol.ParseRSAPublicKeyPEM([]byte(storedKey.PublicKey))
+	if err != nil {
+		return fmt.Errorf("parse public key for %s: %w", req.HomeServerId, err)
+	}
+
+	if err := protocol.VerifyRegisterRequest(req, pub); err != nil {
+		return err
+	}
+	return nil
+}
+
+func equalBytes(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *QUICServer) cleanupConnection(hc *quicHomeConn) {

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/yingshulu/famfun/internal/model"
+	"github.com/yingshulu/famfun/internal/protocol"
 )
 
 var allowedUploadExtensions = map[string]bool{
@@ -30,6 +32,15 @@ type CloudServer struct {
 	distDir      string
 	jwtKey       []byte
 	tokenExpiry  time.Duration
+}
+
+type managedHomeJSON struct {
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	Online              bool   `json:"online"`
+	UpdatedAt           string `json:"updated_at"`
+	PublicKey           string `json:"public_key"`
+	PublicKeyConfigured bool   `json:"public_key_configured"`
 }
 
 func NewCloudServer(registry HomeRegistry, proxy StreamProxyService, cache SegmentCache, videoStore *VideoStore, distDir string) *CloudServer {
@@ -79,6 +90,9 @@ func (s *CloudServer) setupRoutes() {
 	admin.Use(s.adminOnly())
 	admin.POST("/users", s.handleCreateUser)
 	admin.GET("/users", s.handleListUsers)
+	admin.GET("/homes/keys", s.handleListManagedHomes)
+	admin.PUT("/homes/:homeID/public-key", s.handleUpsertHomePublicKey)
+	admin.DELETE("/homes/:homeID", s.handleDeleteManagedHome)
 	admin.DELETE("/users/:userID", s.handleDeleteUser)
 	admin.PUT("/users/:userID/role", s.handleUpdateUserRole)
 	admin.PUT("/users/:userID/password", s.handleUpdateUserPassword)
@@ -422,6 +436,107 @@ func (s *CloudServer) handleListUsers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, users)
+}
+
+func (s *CloudServer) handleListManagedHomes(c *gin.Context) {
+	onlineHomes := s.homeRegistry.ListHomes()
+	storedKeys, err := s.videoStore.ListHomePublicKeys()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	managed := make(map[string]managedHomeJSON, len(storedKeys)+len(onlineHomes))
+	for _, key := range storedKeys {
+		managed[key.HomeID] = managedHomeJSON{
+			ID:                  key.HomeID,
+			UpdatedAt:           key.UpdatedAt,
+			PublicKey:           key.PublicKey,
+			PublicKeyConfigured: key.PublicKey != "",
+		}
+	}
+
+	for _, home := range onlineHomes {
+		entry := managed[home.ID]
+		entry.ID = home.ID
+		entry.Name = home.Name
+		entry.Online = true
+		entry.PublicKeyConfigured = entry.PublicKey != ""
+		managed[home.ID] = entry
+	}
+
+	homes := make([]managedHomeJSON, 0, len(managed))
+	for _, home := range managed {
+		homes = append(homes, home)
+	}
+	slices.SortFunc(homes, func(a, b managedHomeJSON) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+
+	c.JSON(http.StatusOK, homes)
+}
+
+func (s *CloudServer) handleUpsertHomePublicKey(c *gin.Context) {
+	homeID := strings.TrimSpace(c.Param("homeID"))
+	var req struct {
+		PublicKey string `json:"public_key"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	if homeID == "" || strings.TrimSpace(req.PublicKey) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "home_id and public_key are required"})
+		return
+	}
+
+	if _, err := protocol.ParseRSAPublicKeyPEM([]byte(req.PublicKey)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid RSA public key: " + err.Error()})
+		return
+	}
+
+	if err := s.videoStore.UpsertHomePublicKey(homeID, req.PublicKey); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	key, err := s.videoStore.GetHomePublicKey(homeID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	name := ""
+	online := false
+	for _, home := range s.homeRegistry.ListHomes() {
+		if home.ID == homeID {
+			name = home.Name
+			online = true
+			break
+		}
+	}
+
+	c.JSON(http.StatusOK, managedHomeJSON{
+		ID:                  key.HomeID,
+		Name:                name,
+		Online:              online,
+		UpdatedAt:           key.UpdatedAt,
+		PublicKey:           key.PublicKey,
+		PublicKeyConfigured: true,
+	})
+}
+
+func (s *CloudServer) handleDeleteManagedHome(c *gin.Context) {
+	homeID := strings.TrimSpace(c.Param("homeID"))
+	if homeID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "home_id is required"})
+		return
+	}
+	if err := s.videoStore.DeleteHomePublicKey(homeID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (s *CloudServer) handleDeleteUser(c *gin.Context) {

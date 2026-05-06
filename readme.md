@@ -1,216 +1,59 @@
-# Home Video Album - Distributed Video Streaming System
+# CLAUDE.md
 
-A YouTube-like home video streaming application with a cloud server and home server architecture. Videos are stored on a home server (private network), converted to HLS format, and streamed through a public cloud server.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+FamFun is a distributed home video streaming system. Videos are stored on a private **home server** and streamed through a public **cloud server** using QUIC protocol and HLS format. The cloud server exposes a REST API (Gin) and serves a React frontend; the home server processes videos with ffmpeg and connects to the cloud over QUIC.
+
+## Build & Development Commands
+
+```bash
+make all              # Build everything (protobuf, frontend, cloud, home binaries)
+make cloud            # Build cloud binary → bin/cloud
+make home             # Build home binary → bin/home
+make proto            # Regenerate protobuf Go code from proto/famfun.proto
+make test             # Run all Go tests: go test ./...
+make clean            # Remove bin/, dist/, frontend artifacts
+make dev-cert         # Generate self-signed TLS cert in certs/
+
+# Run servers locally
+make run-cloud        # ./bin/cloud --http-addr :8080 --quic-addr :4433 --dist-dir ./dist
+make run-home         # ./bin/home --cloud-addr localhost:4433 --video-dir ./videos --tls-insecure
+
+# Run a single test
+go test ./internal/cloud/ -run TestCachePutAndGet -v
+```
 
 ## Architecture
 
+Two independent binaries communicate via Protobuf-over-QUIC:
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    INTERNET / PUBLIC CLOUD                   │
-│                    (Cloud Server :8080)                      │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  REST API: /api/videos, /api/stream/:id/:resource   │   │
-│  │  Quic Connection: Persistent channel to home      │   │
-│  │  Frontend: React SPA served on /                     │   │
-│  └──────────────────────────────────────────────────────┘   │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                        QUIC   Streams
-                    (Persistent Connection)
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  HOME NETWORK / PRIVATE                      │
-│               (Home Server :9080 streaming)                  │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  Video Scanner: Scans MP4s on startup               │   │
-│  │  HLS Conversion: MP4 → HLS via ffmpeg               │   │
-│  │  Thumbnail Generation: PNG thumbnails               │   │
-│  │  Control Handler: Responds to playlist/segment      │   │
-│  │  QUIC Connection: To cloud server                   │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                               │
-│  Local Storage:                                              │
-│  ├─ ./videos/           (Original MP4 files)                │
-│  ├─ ./video_streams/    (HLS .m3u8 + .ts files)            │
-│  └─ ./thumbnails/       (PNG thumbnail cache)              │
-└─────────────────────────────────────────────────────────────┘
+Browser ──HTTP/HLS──► Cloud Server ──QUIC──► Home Server ──ffmpeg──► Video Files
+                      (public)               (private/NAT)
 ```
 
-## Components
+**Cloud server** (`cmd/cloud/main.go`): Gin HTTP API + QUIC listener. Receives home server connections, proxies streaming requests, caches HLS segments (LRU), manages users (SQLite + bcrypt + JWT), and serves the React frontend.
 
-### 1. Cloud Server (Go + Gin)
-- **Port**: 8080
-- **Features**:
-  - REST API for video listings and metadata
-  - QUIC server for persistent home server connections
-  - HTTP endpoints for HLS playlists and segments (proxies to home server)
-  - **Caching system**: LRU cache (100MB) for HLS segments to support multi-user playback
-  - React frontend static file serving
-  - Performance monitoring via `/api/cache-stats`
-- **Multi-user Support**: ✅ Caches hot segments, supports 100+ concurrent users on 10Mbps home connection
+**Home server** (`cmd/home/main.go`): QUIC client that connects to cloud, scans a video directory, converts videos to HLS via ffmpeg, generates thumbnails, and responds to streaming/metadata requests from cloud. Reconnects automatically with heartbeats every 30s.
 
-### 2. Home Server (Go + Gin)
-- **Port**: 9080 (for local streaming, not exposed publicly)
-- **Features**:
-  - MP4 etc format video files scanner and indexer (runs on startup)
-  - ffmpeg-based HLS conversion (MP4 etc → .m3u8 + .ts segments)
-  - Thumbnail generation (PNG, 320px width)
-  - QUIC client connecting to cloud channel
-  - Responds to playlist/segment requests from cloud
+### Key packages
 
-### 3. Frontend (React + TypeScript + Video.js)
-- **Language**: TypeScript
-- **Framework**: React 18
-- **Video Player**: Video.js with HLS support
-- **Build**: Webpack
-- **Features**:
-  - Video grid display with thumbnails
-  - Video.js player with adaptive HLS streaming
-  - Dynamic video list from cloud API
-- **Key Files**: `frontend/src/App.tsx`, `frontend/src/components/`
+- `internal/cloud/` — Cloud components: HTTP server (server.go), QUIC listener (quic_server.go), home registry (home_manager.go), stream proxy (stream_proxy.go), LRU cache (cache.go), user/video SQLite stores (userdb.go, videodb.go), JWT auth (auth.go)
+- `internal/home/` — Home components: orchestrator (server.go), QUIC client (quic_client.go), video scanner (scanner.go), HLS converter (converter.go), thumbnail generator (thumbnail.go)
+- `internal/model/` — Shared data types (Video struct with proto conversion)
+- `internal/protocol/` — Message framing: 4-byte length header + Protobuf envelope, 50MB max
+- `pkg/proto/` — Generated protobuf code from `proto/famfun.proto`
 
-## Protocol
+### Communication protocol
 
-### Control Channel Messages (WebSocket: Cloud → Home)
+All cloud↔home messages use a Protobuf `Envelope` wrapper (defined in `proto/famfun.proto`). The home server maintains a persistent QUIC control stream for registration/heartbeats and opens data streams on-demand for playlist/segment/thumbnail requests.
 
-**Home Registration**:
-```json
-{
-  "type": "register",
-    "home_server_id": "uuid",
-    "name": "Home Video Server"
-}
-```
+### Role-based access
 
-**Heartbeat**:
-Increase update the new added video to Cloud Server
-```json
-{
-  "type": "heartbeat",
-    "videos": [
-      {
-        "id": "video_id",
-        "filename": "video.mp4",
-        "title": "Video Title",
-        "duration": 3600,
-        "filesize": 1073741824,
-        "thumbnail": "base64_encoded_png",
-        "resolution": "1920x1080",
-        "created_at": "2026-04-14T10:00:00Z",
-        "home_server_id": "home_id"
-      }
-    ]
-}
-```
+Three roles: `admin` (sees all videos, manages users), `member` (sees member+guest videos, can comment), `guest`/unauthenticated (guest-visibility videos only).
 
-**Video List Update**:
-```json
-{
-  "type": "video_list",
-    "videos": [
-      {
-        "id": "video_id",
-        "filename": "video.mp4",
-        "title": "Video Title",
-        "duration": 3600,
-        "filesize": 1073741824,
-        "thumbnail": "base64_encoded_png",
-        "resolution": "1920x1080",
-        "created_at": "2026-04-14T10:00:00Z",
-        "home_server_id": "home_id"
-      }
-    ]
-}
-```
+## Dependencies
 
-**Playlist Request**:
-```json
-{
-  "type": "get_playlist",
-    "video_id": "video_id"
-}
-```
-
-**Segment Request**:
-```json
-{
-  "type": "get_segment",
-    "video_id": "video_id",
-    "segment_name": "segment-0.ts"
-}
-```
-
-## Setup & Installation
-
-### Requirements
-- Go 1.23+
-- Node.js 18+
-- ffmpeg and ffprobe
-- macOS/Linux (or adjust paths for Windows)
-
-
-This builds everything automatically. If npm fails, see [NPM_TROUBLESHOOTING.md](NPM_TROUBLESHOOTING.md)
-
-
-## Data Flow
-
-1. **Startup**:
-   - Home server scans MP4 etc format videos
-   - ffmpeg converts MP4 etc formats → HLS (.m3u8 + .ts files)
-   - ffmpeg extracts thumbnails
-   - Home server connects to cloud via persistent WebSocket
-   - Home server sends video metadata to cloud
-
-2. **User browses videos**:
-   - Frontend loads, requests `/api/videos` from cloud
-   - Cloud returns all videos from all connected home servers
-   - Frontend displays video grid with thumbnails
-
-3. **User clicks to play video**:
-   - Frontend requests HLS playlist from `/api/stream/:homeID/:videoID/index.m3u8`
-   - Cloud receives request, asks home server for playlist via control WebSocket
-   - Home server responds with playlist content (updates segment URLs to cloud paths)
-   - Cloud proxies playlist back to frontend
-   - Video.js player requests segments
-   - Each segment request goes to cloud, proxied to home server
-   - Home server sends segment data back through cloud to client
-   - Video.js plays the adaptive HLS stream
-
-
-## Configuration
-
-### Cloud Server
-- Port: 8080 (edit `main.go` line with `router.Run()`)
-- Frontend dist path: `./dist/` (relative to cloud binary)
-
-### Home Server
-- Cloud URL: `ws://localhost:8080/api/ws/home`
-- Video directory: `./videos/`
-- Stream output: `./video_streams/`
-- Thumbnail output: `./thumbnails/`
-- ffmpeg HLS segment duration: 6 seconds (edit `convertToHLS()`)
-
-### Frontend
-- API base URL: `/` (assumes same-domain, edit `App.tsx` axios calls if needed)
-- Dev server port: 3000 (webpack config)
-- Production port: Served by cloud server on 8080
-
-
-
-For complete multi-user support details, see [MULTI_USER_GUIDE.md](MULTI_USER_GUIDE.md) and [CONCURRENCY_ANALYSIS.md](CONCURRENCY_ANALYSIS.md)
-
-## Development
-
-Built with:
-- Go 1.23+ with Gin web framework
-- React 18 + TypeScript
-- Video.js for HLS playback
-- ffmpeg for video processing
-- Webpack for frontend bundling
-
-## Code Rules
-- Cloud / Home / Frontend are all under a go project
-- Protocol / Data Models uses protobuf and are for common use
-- Must use interface to code construction
-- Must split into independent struct object based on reposibility, like: home server, Quic Connector, Video Scanner ...
+Go 1.25.0 · Gin (HTTP) · quic-go (QUIC) · golang-jwt (JWT) · modernc.org/sqlite (pure-Go SQLite) · google/protobuf · ffmpeg/ffprobe (external, required by home server)

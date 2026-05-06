@@ -29,18 +29,20 @@ type CloudConnector interface {
 	Connect(ctx context.Context, cloudAddr string) error
 	SendEnvelope(env *pb.Envelope) error
 	SetMessageHandler(handler MessageHandler)
+	GetRegisterChallenge() ([]byte, error)
 	Disconnected() <-chan struct{}
 	Close() error
 }
 
 type QUICClient struct {
-	tlsInsecure   bool
-	conn          *quic.Conn
-	controlStream *quic.Stream
-	handler       MessageHandler
-	mu            sync.Mutex
-	closed        bool
-	disconnected  chan struct{}
+	tlsInsecure       bool
+	conn              *quic.Conn
+	controlStream     *quic.Stream
+	handler           MessageHandler
+	registerChallenge []byte
+	mu                sync.Mutex
+	closed            bool
+	disconnected      chan struct{}
 }
 
 func NewQUICClient(tlsInsecure bool) *QUICClient {
@@ -68,10 +70,44 @@ func (c *QUICClient) Connect(ctx context.Context, cloudAddr string) error {
 		conn.CloseWithError(0, "failed to open stream")
 		return fmt.Errorf("open control stream: %w", err)
 	}
+	log.Println("Quic client connect with openning stream success")
+
+	clientChallenge, err := protocol.GenerateChallenge(16)
+	if err != nil {
+		conn.CloseWithError(0, "failed to generate register challenge")
+		return fmt.Errorf("generate register challenge: %w", err)
+	}
+
+	challengeReqEnv := &pb.Envelope{
+		Payload: &pb.Envelope_RegisterChallenge{
+			RegisterChallenge: &pb.RegisterChallenge{
+				Challenge: clientChallenge,
+			},
+		},
+	}
+	if err := protocol.WriteMessage(stream, challengeReqEnv); err != nil {
+		conn.CloseWithError(0, "failed to send register challenge")
+		return fmt.Errorf("send register challenge: %w", err)
+	}
+
+	challengeRspEnv, err := protocol.ReadMessage(stream)
+	if err != nil {
+		conn.CloseWithError(0, "failed to read register challenge")
+		return fmt.Errorf("read register challenge: %w", err)
+	}
+	log.Println("Quic client read register challenge success")
+
+	serverChallenge := challengeRspEnv.GetRegisterChallenge()
+	if serverChallenge == nil || len(serverChallenge.Challenge) == 0 {
+		conn.CloseWithError(0, "missing register challenge")
+		return fmt.Errorf("expected register challenge, got %T", challengeRspEnv.Payload)
+	}
+	log.Println("Quic client got register challenge")
 
 	c.mu.Lock()
 	c.conn = conn
 	c.controlStream = stream
+	c.registerChallenge = append(clientChallenge, serverChallenge.Challenge...)
 	c.closed = false
 	c.disconnected = make(chan struct{})
 	c.mu.Unlock()
@@ -110,6 +146,16 @@ func (c *QUICClient) SendEnvelope(env *pb.Envelope) error {
 		return fmt.Errorf("not connected")
 	}
 	return protocol.WriteMessage(c.controlStream, env)
+}
+
+func (c *QUICClient) GetRegisterChallenge() ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.registerChallenge) == 0 {
+		return nil, fmt.Errorf("register challenge not available")
+	}
+	return append([]byte(nil), c.registerChallenge...), nil
 }
 
 func (c *QUICClient) buildTLSConfig() *tls.Config {

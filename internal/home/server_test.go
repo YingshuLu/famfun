@@ -68,6 +68,7 @@ type mockConnector struct {
 	envelopes    []*pb.Envelope
 	handler      MessageHandler
 	disconnected chan struct{}
+	challenge    []byte
 }
 
 func (m *mockConnector) Connect(ctx context.Context, cloudAddr string) error {
@@ -83,6 +84,13 @@ func (m *mockConnector) SendEnvelope(env *pb.Envelope) error {
 
 func (m *mockConnector) SetMessageHandler(handler MessageHandler) {
 	m.handler = handler
+}
+
+func (m *mockConnector) GetRegisterChallenge() ([]byte, error) {
+	if len(m.challenge) == 0 {
+		return []byte("test-register-challenge"), nil
+	}
+	return append([]byte(nil), m.challenge...), nil
 }
 
 func (m *mockConnector) Disconnected() <-chan struct{} {
@@ -125,6 +133,9 @@ func TestHomeServerRegister(t *testing.T) {
 	}
 	if req.HomeServerId != "home-1" {
 		t.Errorf("HomeServerId = %q, want %q", req.HomeServerId, "home-1")
+	}
+	if len(req.Challenge) == 0 {
+		t.Error("expected register challenge to be set")
 	}
 }
 

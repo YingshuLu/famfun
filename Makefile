@@ -6,9 +6,6 @@ proto:
 	protoc --go_out=. --go_opt=paths=source_relative proto/famfun.proto
 	mv proto/famfun.pb.go pkg/proto/famfun.pb.go
 
-frontend:
-	cd frontend && npm install && npm run build
-
 cloud:
 	go build -o bin/cloud ./cmd/cloud
 

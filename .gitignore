@@ -36,6 +36,7 @@ videos/*
 thumbnails/*
 video_streams/*
 frontend/*
+bin/*
 *.db
 *.db-shm
 *.db-wal

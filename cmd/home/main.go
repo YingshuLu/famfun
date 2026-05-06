@@ -31,6 +31,13 @@ func main() {
 		cfg.videoDir, cfg.streamDir, cfg.thumbDir,
 		scanner, converter, thumbGen, client,
 	)
+	if cfg.privateKeyPath != "" {
+		signer, err := home.NewRSASignerFromFile(cfg.privateKeyPath)
+		if err != nil {
+			log.Fatalf("load RSA private key: %v", err)
+		}
+		server.SetRegisterSigner(signer)
+	}
 
 	log.Printf("home server starting (id=%s, name=%s)", cfg.homeID, cfg.homeName)
 
@@ -40,13 +47,14 @@ func main() {
 }
 
 type config struct {
-	cloudAddr   string
-	videoDir    string
-	streamDir   string
-	thumbDir    string
-	homeID      string
-	homeName    string
-	tlsInsecure bool
+	cloudAddr      string
+	videoDir       string
+	streamDir      string
+	thumbDir       string
+	homeID         string
+	homeName       string
+	privateKeyPath string
+	tlsInsecure    bool
 }
 
 func parseFlags() config {
@@ -57,6 +65,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.thumbDir, "thumb-dir", "./thumbnails", "thumbnail output directory")
 	flag.StringVar(&cfg.homeID, "home-id", "", "home server ID (auto-generated if empty)")
 	flag.StringVar(&cfg.homeName, "home-name", "", "home server name (hostname if empty)")
+	flag.StringVar(&cfg.privateKeyPath, "rsa-private-key", "", "RSA private key PEM used to sign register requests")
 	flag.BoolVar(&cfg.tlsInsecure, "tls-insecure", false, "skip TLS verification")
 	flag.Parse()
 
